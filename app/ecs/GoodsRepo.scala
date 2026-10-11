@@ -40,8 +40,50 @@ class GoodsRepo @Inject() (db: Db):
     ApiJson.page(page.page, page.pageSize, total,
       db.rows(conn, sql, params ++ Seq(page.pageSize, page.offset)).map(Views.goodsSummary(_)))
 
-  /** Existence check for a brand that shoppers may open. */
-  def brandVisible(conn: Connection, brandId: Long): Boolean =
+  /** Escape a LIKE operand; `!` is the escape character used by the patterns below. */
+  def escapeLike(text: String): String =
+    text.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+
+  /**
+   * Combined goods search (PHP `search.php?keywords=`): category subtree,
+   * brand and a name/keywords/goods_sn text match, all as bound parameters.
+   */
+  def search(
+    conn: Connection,
+    categoryId: Option[Long],
+    brandId: Option[Long],
+    query: Option[String],
+    page: Paging.Page,
+    sort: Option[String]
+  ): JsObject =
+    val conditions = scala.collection.mutable.ListBuffer.empty[String]
+    val params = scala.collection.mutable.ListBuffer.empty[Any]
+
+    categoryId.foreach { cid =>
+      val ids = categorySubtreeIds(conn, cid)
+      val marks = Sql.marks(ids.size)
+      conditions +=
+        s"""(g.cat_id IN ($marks)
+           |  OR EXISTS (SELECT 1 FROM goods_cat gc WHERE gc.goods_id = g.goods_id AND gc.cat_id IN ($marks)))""".stripMargin
+      params ++= ids
+      params ++= ids
+    }
+
+    brandId.foreach { bid =>
+      conditions += "g.brand_id = ?"
+      params += bid
+    }
+
+    query.map(_.trim).filter(_.nonEmpty).foreach { text =>
+      val like = s"%${escapeLike(text)}%"
+      conditions += "(g.goods_name LIKE ? ESCAPE '!' OR g.keywords LIKE ? ESCAPE '!' OR g.goods_sn LIKE ? ESCAPE '!')"
+      params ++= Seq(like, like, like)
+    }
+
+    val clause = if conditions.isEmpty then "1 = 1" else conditions.mkString(" AND ")
+    list(conn, clause, params.toList, page, sort)
+
+  /** Existence check for a brand that shoppers may open. */  def brandVisible(conn: Connection, brandId: Long): Boolean =
     db.row(conn, "SELECT brand_id FROM brand WHERE brand_id = ? AND is_show = 1", Seq(brandId)).isDefined
 
   /** Existence check for a visible category. */
