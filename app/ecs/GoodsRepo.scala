@@ -333,3 +333,6 @@ enum QuoteFailure:
 object GoodsRepo:
   /** Browseable goods; the single definition shared by every goods read. */
   val Visible: String = "g.is_on_sale = 1 AND g.is_delete = 0 AND g.is_alone_sale = 1"
+
+  /** The same predicate for the few queries that do not alias goods as `g`. */
+  val VisiblePlain: String = "is_on_sale = 1 AND is_delete = 0 AND is_alone_sale = 1"
