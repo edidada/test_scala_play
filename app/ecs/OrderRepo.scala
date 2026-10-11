@@ -290,9 +290,9 @@ class OrderRepo @Inject() (db: Db, cart: CartRepo):
       case Some(row) =>
         val orderCents = moneyCents(row, "order_amount")
         val paymentFee = moneyCents(row, "payment_fee")
-        val alreadyPaid = db.row(conn, "SELECT paid_cents FROM order_balance_payment WHERE order_id = ?", Seq(orderId))
-          .map(_.long("paid_cents")).getOrElse(0L)
-        val payable = (orderCents - paymentFee - alreadyPaid).max(0L)
+        // `order_amount` is already reduced by every earlier balance payment, so the
+        // remaining payable is the stored total minus the fee the gateway still takes.
+        val payable = (orderCents - paymentFee).max(0L)
         if payable <= 0L then Left(OrderFailure.WrongState)
         else
           val applied = amountCents.min(payable)
