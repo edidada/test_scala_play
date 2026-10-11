@@ -1,5 +1,6 @@
 package controllers
 
+import ecs.{Db, FieldError, MarketingRepo, Paging}
 import javax.inject.Inject
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
 
@@ -7,23 +8,46 @@ import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponent
  * Promotion endpoints — maps PHP group_buy.php / auction.php / snatch.php /
  * activity.php / package.php / topic.php / vote.php / exchange.php.
  */
-class PromotionController @Inject() (cc: ControllerComponents) extends AbstractController(cc) with ApiSupport:
-  def promotions(page: Option[Int], page_size: Option[Int]) : Action[AnyContent] =
-    Action { req => notReady("GET /api/v1/promotions")(req) }
+class PromotionController @Inject() (cc: ControllerComponents, db: Db, marketing: MarketingRepo)
+  extends AbstractController(cc) with ApiSupport:
 
-  def promotion(id: Long) : Action[AnyContent] = Action { req => notReady("GET /api/v1/promotions/{id}")(req) }
+  def promotions(page: Option[Int], page_size: Option[Int]): Action[AnyContent] = Action { req =>
+    val parsed =
+      for
+        p <- Paging.of(page, page_size)
+        kind <- PromotionController.activityType(req.getQueryString("type"), marketing.ActivityTypes)
+      yield (p, kind)
 
-  def activities : Action[AnyContent] = Action { req => notReady("GET /api/v1/activities")(req) }
+    orFail(parsed, req) { case (p, kind) =>
+      Ok(db.readOnly(conn => marketing.promotions(conn, kind, p)))
+    }
+  }
 
-  def packages : Action[AnyContent] = Action { req => notReady("GET /api/v1/packages")(req) }
+  def promotion(id: Long): Action[AnyContent] = Action { req => notReady("GET /api/v1/promotions/{id}")(req) }
 
-  def topic(id: Long) : Action[AnyContent] = Action { req => notReady("GET /api/v1/topics/{id}")(req) }
+  def activities: Action[AnyContent] = Action { req => notReady("GET /api/v1/activities")(req) }
 
-  def voteCurrent : Action[AnyContent] = Action { req => notReady("GET /api/v1/votes/current")(req) }
+  def packages: Action[AnyContent] = Action { req => notReady("GET /api/v1/packages")(req) }
 
-  def voteRespond(id: Long) : Action[AnyContent] = Action { req => notReady("POST /api/v1/votes/{id}/responses")(req) }
+  def topic(id: Long): Action[AnyContent] = Action { req => notReady("GET /api/v1/topics/{id}")(req) }
 
-  def exchangeGoods(category_id: Option[Int], integral_min: Option[Long], integral_max: Option[Long], page: Option[Int], page_size: Option[Int], sort: Option[String]) : Action[AnyContent] =
+  def voteCurrent: Action[AnyContent] = Action { req => notReady("GET /api/v1/votes/current")(req) }
+
+  def voteRespond(id: Long): Action[AnyContent] = Action { req => notReady("POST /api/v1/votes/{id}/responses")(req) }
+
+  def exchangeGoods(category_id: Option[Int], integral_min: Option[Long], integral_max: Option[Long],
+    page: Option[Int], page_size: Option[Int], sort: Option[String]): Action[AnyContent] =
     Action { req => notReady("GET /api/v1/exchange-goods")(req) }
 
-  def exchangeGoodsDetail(id: Long) : Action[AnyContent] = Action { req => notReady("GET /api/v1/exchange-goods/{id}")(req) }
+  def exchangeGoodsDetail(id: Long): Action[AnyContent] = Action { req => notReady("GET /api/v1/exchange-goods/{id}")(req) }
+
+object PromotionController:
+  /** `type` is a reserved route word, so it is read from the query string. */
+  def activityType(raw: Option[String], allowed: Set[Int]): Either[FieldError, Option[Int]] =
+    raw.map(_.trim).filter(_.nonEmpty) match
+      case None => Right(None)
+      case Some(text) =>
+        text.toIntOption match
+          case Some(value) if allowed.contains(value) => Right(Some(value))
+          case Some(_) => Left(FieldError("type", s"type must be one of ${allowed.toSeq.sorted.mkString(", ")}"))
+          case None    => Left(FieldError("type", "type must be an integer"))
