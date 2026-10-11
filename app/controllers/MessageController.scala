@@ -1,6 +1,6 @@
 package controllers
 
-import ecs.{AuthedAction, Body, Db, EmailAddress, FieldError, MessageRepo, Paging}
+import ecs.{ApiError, AuthedAction, Body, Db, EmailAddress, FieldError, MessageRepo, Paging}
 import javax.inject.Inject
 import play.api.libs.json.JsValue
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
@@ -47,9 +47,18 @@ class MessageController @Inject() (cc: ControllerComponents, db: Db, messages: M
     }
   }
 
-  def mine(page: Option[Int], page_size: Option[Int]): Action[AnyContent] = Action { req => notReady("GET /api/v1/me/messages")(req) }
+  /** `GET /api/v1/me/messages` — own top-level messages with their first reply. */
+  def mine(page: Option[Int], page_size: Option[Int]): Action[AnyContent] = authed { req =>
+    orFail(Paging.of(page, page_size), req) { p =>
+      Ok(db.readOnly(conn => messages.mine(conn, req.user.id, p)))
+    }
+  }
 
-  def destroy(id: Long): Action[AnyContent] = Action { req => notReady("DELETE /api/v1/me/messages/{id}")(req) }
+  /** `DELETE /api/v1/me/messages/{id}` — owner only, replies removed in the same transaction. */
+  def destroy(id: Long): Action[AnyContent] = authed { req =>
+    if db.inTransaction(conn => messages.delete(conn, id, req.user.id)) then NoContent
+    else ApiError.notFound("message not found", req)
+  }
 
 object MessageController:
   /** Optional string field with a fallback when it is absent or blank. */
