@@ -1,6 +1,6 @@
 package controllers
 
-import ecs.{AdRepo, Db}
+import ecs.{AdRepo, ApiError, Db}
 import javax.inject.Inject
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
 
@@ -12,6 +12,12 @@ class AdController @Inject() (cc: ControllerComponents, db: Db, ads: AdRepo)
     xml(db.readOnly(conn => ads.cycleImage(conn)))
   }
 
-  def detail(id: Long): Action[AnyContent] = Action { req => notReady("GET /api/v1/ads/{id}")(req) }
+  def detail(id: Long): Action[AnyContent] = Action { req =>
+    db.readOnly { conn =>
+      ads.detail(conn, id) match
+        case Some(payload) => Ok(payload)
+        case None          => ApiError.notFound("ad not found", req)
+    }
+  }
 
   def click(id: Long): Action[AnyContent] = Action { req => notReady("POST /api/v1/ads/{id}/click")(req) }
