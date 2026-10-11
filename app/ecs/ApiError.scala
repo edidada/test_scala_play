@@ -99,6 +99,9 @@ object ApiJson:
 
   def nowUnix: Long = Instant.now().getEpochSecond
 
+  /** Format a legacy unix timestamp the same way DATETIME columns are exposed. */
+  def utcOf(unixSeconds: Long): String = utcFormatter.format(Instant.ofEpochSecond(unixSeconds))
+
   /** Parse a `yyyy-MM-dd HH:mm:ss` UTC stamp into epoch seconds (0 when absent). */
   def unixOf(text: String): Long =
     try java.time.LocalDateTime.parse(text, utcFormatter).toEpochSecond(ZoneOffset.UTC)
