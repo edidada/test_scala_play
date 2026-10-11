@@ -97,9 +97,15 @@ class UserRepo @Inject() (db: Db):
       }
 
   /** `PATCH /api/v1/me` — e-mail and/or mobile phone, at least one per call. */
+  /** The address on file, so resending it in a PATCH is not a uniqueness conflict. */
+  private def currentEmail(conn: Connection, userId: Long): String =
+    db.row(conn, "SELECT email FROM users WHERE user_id = ?", Seq(userId)).map(_.str("email")).getOrElse("")
+
   def updateProfile(conn: Connection, userId: Long, email: Option[String], mobile: Option[String]): Either[FieldError, JsObject] =
     if email.isEmpty && mobile.isEmpty then Left(FieldError("email", "email or mobile_phone is required"))
-    else if email.exists(e => emailTaken(conn, e)) then Left(FieldError("email", "email is already registered"))
+    // somebody else's address is a conflict, the caller's own address is a no-op
+    else if email.exists { e => e != currentEmail(conn, userId) && emailTaken(conn, e) } then
+      Left(FieldError("email", "email is already registered"))
     else
       val sets = List(email.map(_ => "email = ?"), mobile.map(_ => "mobile_phone = ?")).flatten :+ "updated_at = ?"
       val params: Seq[Any] = List(email, mobile).flatten.map[Any](identity) :+ ApiJson.nowUtc :+ userId
