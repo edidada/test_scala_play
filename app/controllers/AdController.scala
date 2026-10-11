@@ -1,12 +1,17 @@
 package controllers
 
+import ecs.{AdRepo, Db}
 import javax.inject.Inject
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
 
-/** Advertising endpoints — maps PHP affiche.php / cycle_image.php. */
-class AdController @Inject() (cc: ControllerComponents) extends AbstractController(cc) with ApiSupport:
-  def cycleImage : Action[AnyContent] = Action { req => notReady("GET /cycle-image.xml")(req) }
+/** Advertising endpoints — maps PHP `affiche.php` / `cycle_image.php`. */
+class AdController @Inject() (cc: ControllerComponents, db: Db, ads: AdRepo)
+  extends AbstractController(cc) with ApiSupport:
 
-  def detail(id: Long) : Action[AnyContent] = Action { req => notReady("GET /api/v1/ads/{id}")(req) }
+  def cycleImage: Action[AnyContent] = Action {
+    xml(db.readOnly(conn => ads.cycleImage(conn)))
+  }
 
-  def click(id: Long) : Action[AnyContent] = Action { req => notReady("POST /api/v1/ads/{id}/click")(req) }
+  def detail(id: Long): Action[AnyContent] = Action { req => notReady("GET /api/v1/ads/{id}")(req) }
+
+  def click(id: Long): Action[AnyContent] = Action { req => notReady("POST /api/v1/ads/{id}/click")(req) }
