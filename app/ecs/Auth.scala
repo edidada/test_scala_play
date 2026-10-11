@@ -83,6 +83,13 @@ final class Body(private val json: JsValue):
       case None | Some(JsNull) => None
       case Some(_)             => Some(str(name, maxBytes, allowEmpty = true))
 
+  /** Optional string in the `Either` shape a PATCH body folds into. */
+  def strOpt(name: String, maxBytes: Int = 4096): Either[FieldError, Option[String]] =
+    optStr(name, maxBytes) match
+      case None           => Right(None)
+      case Some(Left(fe)) => Left(fe)
+      case Some(Right(v)) => Right(Some(v))
+
   def long(name: String, min: Long = Long.MinValue, max: Long = Long.MaxValue): Either[FieldError, Long] =
     field(name) match
       case None | Some(JsNull) => Left(FieldError(name, s"$name is required"))
@@ -118,6 +125,18 @@ final class Body(private val json: JsValue):
       case None | Some(JsNull) => Right(default)
       case Some(JsBoolean(v))  => Right(v)
       case Some(_)             => Left(FieldError(name, s"$name must be a boolean"))
+
+  /** Optional boolean: absent means "leave the stored value alone". */
+  def optBool(name: String): Either[FieldError, Option[Boolean]] =
+    field(name) match
+      case None | Some(JsNull) => Right(None)
+      case Some(JsBoolean(v))  => Right(Some(v))
+      case Some(_)             => Left(FieldError(name, s"$name must be a boolean"))
+
+  /** Key names present in the body, so a PATCH can insist on at least one. */
+  def keys: Set[String] = json match
+    case o: JsObject => o.value.keySet.toSet
+    case _           => Set.empty
 
   def ids(name: String, min: Int = 1, max: Int = 100): Either[FieldError, List[Long]] =
     field(name) match

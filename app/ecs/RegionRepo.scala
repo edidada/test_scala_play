@@ -36,6 +36,25 @@ class RegionRepo @Inject() (db: Db):
   def regionUnder(conn: Connection, regionId: Long, parentId: Long): Boolean =
     db.row(conn, "SELECT region_id FROM region WHERE region_id = ? AND parent_id = ?", Seq(regionId, parentId)).isDefined
 
+  private def exists(conn: Connection, regionId: Long): Boolean =
+    db.row(conn, "SELECT region_id FROM region WHERE region_id = ?", Seq(regionId)).isDefined
+
+  /**
+   * Four-level chain check for address and order writes: the country must exist and
+   * every deeper level must be a direct child of the level above it. A district id of
+   * `0` means "no district", which legacy data allows.
+   */
+  def regionChainError(conn: Connection, countryId: Long, provinceId: Long, cityId: Long,
+    districtId: Long): Option[FieldError] =
+    if !exists(conn, countryId) then Some(FieldError("country_id", s"country_id $countryId does not exist"))
+    else if !regionUnder(conn, provinceId, countryId) then
+      Some(FieldError("province_id", s"province_id $provinceId is not a province of country_id $countryId"))
+    else if !regionUnder(conn, cityId, provinceId) then
+      Some(FieldError("city_id", s"city_id $cityId is not a city of province_id $provinceId"))
+    else if districtId != 0 && !regionUnder(conn, districtId, cityId) then
+      Some(FieldError("district_id", s"district_id $districtId is not a district of city_id $cityId"))
+    else None
+
   /** Enabled shipping methods (PHP `myship.php` renders the same list). */
   def shippingOptions(conn: Connection): List[JsObject] =
     db.rows(conn,
