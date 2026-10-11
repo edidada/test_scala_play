@@ -71,8 +71,12 @@ class GoodsController @Inject() (cc: ControllerComponents, db: Db, goodsRepo: Go
   }
 
   def quotation(page: Option[Int], page_size: Option[Int], category_id: Option[Int], brand_id: Option[Int],
-    q: Option[String]): Action[AnyContent] =
-    Action { req => notReady("GET /api/v1/quotation")(req) }
+    q: Option[String]): Action[AnyContent] = Action { req =>
+      orFail(Paging.of(page, page_size), req) { p =>
+        Ok(db.readOnly(conn =>
+          goodsRepo.quotation(conn, category_id.map(_.toLong), brand_id.map(_.toLong), q, p)))
+      }
+    }
 
 object GoodsController:
   /** `goods_ids=12,14` must be 2--4 distinct positive integers (docs/03_api_contract.md). */

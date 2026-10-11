@@ -1,6 +1,6 @@
 package ecs
 
-import play.api.libs.json.{JsObject, Json}
+import play.api.libs.json.{JsNull, JsObject, Json}
 
 import java.sql.Connection
 import javax.inject.{Inject, Singleton}
@@ -56,6 +56,16 @@ class GoodsRepo @Inject() (db: Db):
     page: Paging.Page,
     sort: Option[String]
   ): JsObject =
+    val (clause, params) = filterClause(conn, categoryId, brandId, query)
+    list(conn, clause, params, page, sort)
+
+  /** The search.php filters as a SQL fragment plus its bound parameters. */
+  private def filterClause(
+    conn: Connection,
+    categoryId: Option[Long],
+    brandId: Option[Long],
+    query: Option[String]
+  ): (String, List[Any]) =
     val conditions = scala.collection.mutable.ListBuffer.empty[String]
     val params = scala.collection.mutable.ListBuffer.empty[Any]
 
@@ -80,8 +90,73 @@ class GoodsRepo @Inject() (db: Db):
       params ++= Seq(like, like, like)
     }
 
-    val clause = if conditions.isEmpty then "1 = 1" else conditions.mkString(" AND ")
-    list(conn, clause, params.toList, page, sort)
+    (if conditions.isEmpty then "1 = 1" else conditions.mkString(" AND "), params.toList)
+
+  /**
+   * Quotation rows (PHP `quotation.php?act=print_quotation`): one line per
+   * goods/SKU pair, or one per goods when it has no SKU rows.
+   *
+   * The line carries the numbers a buyer needs to ask for a real price; the
+   * attribute surcharge is deliberately left to `/goods/{id}/price-quote`, so
+   * no client ever adds prices together itself.
+   */
+  def quotation(
+    conn: Connection,
+    categoryId: Option[Long],
+    brandId: Option[Long],
+    query: Option[String],
+    page: Paging.Page
+  ): JsObject =
+    val (clause, params) = filterClause(conn, categoryId, brandId, query)
+    val total = db.count(conn, s"SELECT COUNT(*) FROM goods g WHERE ${GoodsRepo.Visible} AND $clause", params)
+    val rows = db.rows(conn,
+      s"""SELECT ${Views.goodsColumns("g")}
+         |FROM goods g
+         |WHERE ${GoodsRepo.Visible} AND $clause
+         |ORDER BY g.goods_id ASC
+         |LIMIT ? OFFSET ?""".stripMargin,
+      params ++ Seq(page.pageSize, page.offset))
+    val ids = rows.map(_.long("goods_id"))
+    val now = ApiJson.nowUnix
+
+    val skus: Map[Long, List[Row]] =
+      if ids.isEmpty then Map.empty
+      else db.rows(conn,
+        s"""SELECT product_id, goods_id, product_sn, product_number
+           |FROM products WHERE goods_id IN (${Sql.marks(ids.size)})
+           |ORDER BY goods_id, product_id""".stripMargin, ids)
+        .groupBy(_.long("goods_id"))
+
+    val attributeIds: Map[Long, List[Long]] =
+      if ids.isEmpty then Map.empty
+      else db.rows(conn,
+        s"""SELECT goods_id, goods_attr_id
+           |FROM goods_attr WHERE goods_id IN (${Sql.marks(ids.size)})
+           |ORDER BY goods_id, goods_attr_id""".stripMargin, ids)
+        .groupBy(_.long("goods_id"))
+        .map { case (goodsId, rs) => goodsId -> rs.map(_.long("goods_attr_id")) }
+
+    val items = rows.flatMap { row =>
+      val goodsId = row.long("goods_id")
+      val base = Json.obj(
+        "goods_id"      -> goodsId,
+        "goods_sn"      -> row.str("goods_sn"),
+        "goods_name"    -> row.str("goods_name"),
+        "category_id"   -> row.long("cat_id"),
+        "base_price"    -> ApiJson.money(Views.goodsPrice(row, now)),
+        "attribute_ids" -> Json.toJson(attributeIds.getOrElse(goodsId, Nil))
+      )
+      skus.get(goodsId) match
+        case Some(list) if list.nonEmpty =>
+          list.map(p => base ++ Json.obj(
+            "product_id"   -> p.long("product_id"),
+            "product_sn"   -> p.str("product_sn"),
+            "stock"        -> math.min(p.long("product_number"), row.long("goods_number"))
+          ))
+        case _ => List(base ++ Json.obj("product_id" -> JsNull, "product_sn" -> "", "stock" -> row.long("goods_number")))
+    }
+
+    ApiJson.page(page.page, page.pageSize, total, items)
 
   /**
    * Display-only price quote (PHP `goods.php?act=price`).
