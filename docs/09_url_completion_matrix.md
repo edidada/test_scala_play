@@ -108,3 +108,29 @@
 3. 写操作必须有事务、归属过滤、参数化 SQL 和 TOCTOU 防护。
 4. 每个 URL 独立 commit；编码阶段只执行 `git diff --check`。
 5. 全部 URL 编码完成后统一执行 CMake/Ninja 编译、测试和 `curl --noproxy '*'` 验收。
+
+---
+
+## Scala Play 实现状态（2026-10-11 追加，原文不改）
+
+参考源改为本仓库 `third_party/shopex-ecshop`（PHP）与 `conf/routes`，实现栈为
+Play 3.0.12 + Scala 3.3.8，`app/ecs/*Repo.scala` 一套仓储同时走 SQLite 与 MySQL 方言。
+
+- `conf/routes` 现有 **102 条 URL，全部有实现**：`grep -rn "notReady(" app/` 只剩
+  `ApiSupport.scala` 里的工厂定义，没有任何 controller 再调用它。
+- 验收方式两条：`sbt -batch test`（`ecs.ContractSpec` 契约单测 + `routes.ApiFlowSpec`
+  临时 SQLite 全链路），以及 `bash scripts/curl_cart_example.sh` 与文档化 curl 用例。
+  本地实测：`sbt test` 19/19，curl 验收 145/145 与 72/72。
+- CI：`.github/workflows/ci.yml`，ubuntu / windows / macos × JDK 17 / 21 六组合。
+
+上表仍为 `TODO`/`PARTIAL`、且**没有**进入 `conf/routes` 的 PHP 能力，本轮按范围有意未做：
+
+| 未做项 | 说明 |
+| --- | --- |
+| `affiliate.php` 写操作 | 推荐关系与分成读取已完成（`GET /api/v1/me/affiliate`），绑定邀请人以外的分成结算未做 |
+| `group_buy.php` / `auction.php` / `snatch.php` 写操作 | 活动与本人参团读取已做（`GET /api/v1/me/group-buys[/:id]`）；出价、抢购、成团结算未做 |
+| `exchange.php` 兑换下单 | 兑换商品列表与详情已做；扣积分生成订单未做 |
+| `flow.php` 细分步骤 | 保险、包装、贺卡、缺货策略、发票等旧步骤字段未建模；报价统一在 `POST /api/v1/checkout/quote` |
+| `user.php` 细分 action | 会员卡、部门/员工、回收站等后台向 action 未做 |
+| `receive.php` 旧网关字段 | 统一回调 `POST /api/v1/payments/{provider}/callback`（HMAC over raw body）已做，逐网关字段兼容未做 |
+| `api.php` / `captcha.php` / `certi.php` / `pick_out.php` / `pm.php` / `wholesale.php` | 未进入本轮 URL 清单；`affiche.php?act=js` 输出与 `type=collection&u=<id>` 老 widget 模式同样明确不复刻 |
