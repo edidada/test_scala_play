@@ -162,6 +162,24 @@ class GoodsRepo @Inject() (db: Db):
           ))
       }
 
+  /**
+   * Rows for `GET /api/v1/compare` (PHP `compare.php?goods[]=`).
+   *
+   * Returns None when any requested id is invisible, because a comparison page
+   * must not reveal that one of the ids exists but is off-sale or deleted.
+   * Otherwise the summaries keep the caller's input order.
+   */
+  def compare(conn: Connection, goodsIds: List[Long]): Option[List[JsObject]] =
+    val marks = Sql.marks(goodsIds.size)
+    val sql =
+      s"""SELECT ${Views.goodsColumns("g")}
+         |FROM goods g
+         |WHERE ${GoodsRepo.Visible} AND g.goods_id IN ($marks)""".stripMargin
+    val now = ApiJson.nowUnix
+    val byId = db.rows(conn, sql, goodsIds).map(r => r.long("goods_id") -> r).toMap
+    if byId.size != goodsIds.distinct.size then None
+    else Some(goodsIds.distinct.map(id => Views.goodsSummary(byId(id), now)))
+
   /** Existence check for a brand that shoppers may open. */  def brandVisible(conn: Connection, brandId: Long): Boolean =
     db.row(conn, "SELECT brand_id FROM brand WHERE brand_id = ? AND is_show = 1", Seq(brandId)).isDefined
 

@@ -1,8 +1,8 @@
 package controllers
 
-import ecs.{ApiError, Body, Db, GoodsRepo, Paging, QuoteFailure}
+import ecs.{ApiError, Body, Db, FieldError, GoodsRepo, Paging, QuoteFailure}
 import javax.inject.Inject
-import play.api.libs.json.JsValue
+import play.api.libs.json.{JsValue, Json}
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
 
 /**
@@ -60,8 +60,31 @@ class GoodsController @Inject() (cc: ControllerComponents, db: Db, goodsRepo: Go
     }
   }
 
-  def compare(goods_ids: Option[String]): Action[AnyContent] = Action { req => notReady("GET /api/v1/compare")(req) }
+  def compare(goods_ids: Option[String]): Action[AnyContent] = Action { req =>
+    orFail(GoodsController.parseIdList(goods_ids), req) { ids =>
+      db.readOnly { conn =>
+        goodsRepo.compare(conn, ids) match
+          case Some(items) => Ok(Json.obj("items" -> Json.toJson(items)))
+          case None        => ApiError.notFound("one or more goods cannot be compared", req)
+      }
+    }
+  }
 
   def quotation(page: Option[Int], page_size: Option[Int], category_id: Option[Int], brand_id: Option[Int],
     q: Option[String]): Action[AnyContent] =
     Action { req => notReady("GET /api/v1/quotation")(req) }
+
+object GoodsController:
+  /** `goods_ids=12,14` must be 2--4 distinct positive integers (docs/03_api_contract.md). */
+  def parseIdList(raw: Option[String]): Either[FieldError, List[Long]] =
+    val text = raw.map(_.trim).getOrElse("")
+    if text.isEmpty then Left(FieldError("goods_ids", "goods_ids must be a comma separated list"))
+    else
+      val parts = text.split(",").toList.map(_.trim)
+      val parsed = parts.map(p => p.toLongOption)
+      if parsed.exists(_.isEmpty) then Left(FieldError("goods_ids", "goods_ids must contain integers"))
+      else
+        val ids = parsed.flatten.distinct
+        if ids.exists(_ < 1) then Left(FieldError("goods_ids", "goods_ids must contain positive ids"))
+        else if ids.size < 2 || ids.size > 4 then Left(FieldError("goods_ids", "goods_ids must contain 2 to 4 distinct ids"))
+        else Right(ids)
