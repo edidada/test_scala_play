@@ -43,7 +43,14 @@ class PromotionController @Inject() (cc: ControllerComponents, db: Db, marketing
     }
   }
 
-  def topic(id: Long): Action[AnyContent] = Action { req => notReady("GET /api/v1/topics/{id}")(req) }
+  /** `GET /api/v1/topics/{id}` — maps PHP `topic.php?topic_id=`. */
+  def topic(id: Long): Action[AnyContent] = Action { req =>
+    db.readOnly { conn =>
+      marketing.topic(conn, id) match
+        case Some(payload) => Ok(payload)
+        case None          => ApiError.notFound("topic not found", req)
+    }
+  }
 
   def voteCurrent: Action[AnyContent] = Action { req => notReady("GET /api/v1/votes/current")(req) }
 

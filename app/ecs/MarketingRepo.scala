@@ -143,6 +143,57 @@ class MarketingRepo @Inject() (db: Db):
 
     ApiJson.page(page.page, page.pageSize, total, items)
 
+  /**
+   * `GET /api/v1/topics/{id}` (PHP `topic.php?topic_id=`): a topic that is live
+   * right now, its presentation metadata, and the goods groups from its `data`
+   * JSON with off-sale or deleted goods removed by the shared visible rule.
+   */
+  def topic(conn: Connection, topicId: Long): Option[JsObject] =
+    val now = ApiJson.nowUnix
+    db.row(conn,
+      """SELECT topic_id, title, intro, start_time, end_time, data, template, css,
+        |  topic_img, title_pic, base_style, keywords, description
+        |FROM topic WHERE topic_id = ? AND start_time <= ? AND end_time >= ?""".stripMargin,
+      Seq(topicId, now, now))
+      .map { row =>
+        val groups = (extInfo(row.str("data")) match
+          case obj: play.api.libs.json.JsObject => obj.fields.toList
+          case _                                => Nil
+        ).flatMap { case (name, value) =>
+          val ids = value.asOpt[List[Long]].getOrElse(Nil)
+          if ids.isEmpty then None
+          else Some(name -> ids.distinct)
+        }
+
+        val allIds = groups.flatMap(_._2).distinct
+        val byId: Map[Long, JsObject] =
+          if allIds.isEmpty then Map.empty
+          else db.rows(conn,
+            s"""SELECT ${Views.goodsColumns("g")}
+               |FROM goods g
+               |WHERE ${GoodsRepo.Visible} AND g.goods_id IN (${Sql.marks(allIds.size)})""".stripMargin, allIds)
+            .map(r => r.long("goods_id") -> Views.goodsSummary(r, now))
+            .toMap
+
+        Json.obj(
+          "id"          -> row.long("topic_id"),
+          "title"       -> row.str("title"),
+          "intro"       -> row.str("intro"),
+          "start_time"  -> row.long("start_time"),
+          "end_time"    -> row.long("end_time"),
+          "template"    -> row.str("template"),
+          "css"         -> row.str("css"),
+          "topic_img"   -> row.str("topic_img"),
+          "title_pic"   -> row.str("title_pic"),
+          "base_style"  -> row.str("base_style"),
+          "keywords"    -> row.str("keywords"),
+          "description" -> row.str("description"),
+          "groups"      -> Json.toJson(groups.map { case (name, ids) =>
+            Json.obj("name" -> name, "items" -> Json.toJson(ids.flatMap(byId.get)))
+          })
+        )
+      }
+
   /** `GET /api/v1/promotions/{id}` — one running activity of visible goods. */
   def promotion(conn: Connection, actId: Long): Option[JsObject] =
     val now = ApiJson.nowUnix
