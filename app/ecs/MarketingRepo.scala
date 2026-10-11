@@ -47,6 +47,14 @@ class MarketingRepo @Inject() (db: Db):
   private val ActivityLive: String =
     "a.is_finished = 0 AND a.start_time <= ? AND a.end_time >= ? AND g.is_on_sale = 1 AND g.is_delete = 0"
 
+  /** `GET /api/v1/promotions/{id}` — one running activity of visible goods. */
+  def promotion(conn: Connection, actId: Long): Option[JsObject] =
+    val now = ApiJson.nowUnix
+    db.row(conn,
+      s"""$ActivitySelect
+         |WHERE a.act_id = ? AND $ActivityLive""".stripMargin, Seq(actId, now, now))
+      .map(activityProject)
+
   /**
    * `GET /api/v1/promotions` — running snatch / group-buy / auction / exchange
    * / package activities, optionally narrowed by `type`.

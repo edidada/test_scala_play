@@ -1,6 +1,6 @@
 package controllers
 
-import ecs.{Db, FieldError, MarketingRepo, Paging}
+import ecs.{ApiError, Db, FieldError, MarketingRepo, Paging}
 import javax.inject.Inject
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
 
@@ -23,7 +23,13 @@ class PromotionController @Inject() (cc: ControllerComponents, db: Db, marketing
     }
   }
 
-  def promotion(id: Long): Action[AnyContent] = Action { req => notReady("GET /api/v1/promotions/{id}")(req) }
+  def promotion(id: Long): Action[AnyContent] = Action { req =>
+    db.readOnly { conn =>
+      marketing.promotion(conn, id) match
+        case Some(payload) => Ok(payload)
+        case None          => ApiError.notFound("promotion not found", req)
+    }
+  }
 
   def activities: Action[AnyContent] = Action { req => notReady("GET /api/v1/activities")(req) }
 
