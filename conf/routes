@@ -1,0 +1,126 @@
+# ECShop Play REST API — full URL skeleton (docs/02_url_api_list.md, docs/03_api_contract.md).
+# Every line maps a PHP entry point to its JSON/REST endpoint. Bodies are implemented
+# one URL at a time; the completion state is tracked in docs/09_url_completion_matrix.md.
+
+# --- M0: operations --------------------------------------------------------
+GET     /healthz                                    controllers.HealthController.healthz
+
+# --- M1: browse the catalog ------------------------------------------------
+GET     /api/v1/home                                controllers.HomeController.home
+GET     /api/v1/catalog                             controllers.CatalogController.catalog
+GET     /api/v1/brands                              controllers.CatalogController.brands
+GET     /api/v1/brands/:id/goods                    controllers.CatalogController.brandGoods(id: Long, page: Option[Int], page_size: Option[Int], sort: Option[String])
+GET     /api/v1/categories/:id/goods                controllers.CategoryController.goods(id: Long, page: Option[Int], page_size: Option[Int], sort: Option[String])
+GET     /api/v1/goods                               controllers.GoodsController.list(page: Option[Int], page_size: Option[Int], category_id: Option[Int], brand_id: Option[Int], q: Option[String], sort: Option[String])
+GET     /api/v1/goods/:id                           controllers.GoodsController.detail(id: Long)
+POST    /api/v1/goods/:id/price-quote               controllers.GoodsController.priceQuote(id: Long)
+GET     /api/v1/goods/:id/gallery                   controllers.GoodsController.gallery(id: Long)
+GET     /api/v1/compare                             controllers.GoodsController.compare(goods_ids: Option[String])
+GET     /api/v1/quotation                           controllers.GoodsController.quotation(page: Option[Int], page_size: Option[Int], category_id: Option[Int], brand_id: Option[Int], q: Option[String])
+GET     /api/v1/regions                             controllers.RegionController.list(parent: Option[Long])
+
+# --- M1: content ----------------------------------------------------------
+GET     /api/v1/articles/:id                        controllers.ArticleController.detail(id: Long)
+GET     /api/v1/article-categories/:id/articles     controllers.ArticleController.categoryArticles(id: Long, page: Option[Int], page_size: Option[Int])
+GET     /sitemap.xml                                controllers.FeedController.sitemap
+GET     /feed.xml                                   controllers.FeedController.feed(cat: Option[Long], brand: Option[Long])
+GET     /goods-widget.js                            controllers.WidgetController.goodsWidget(cat_id: Option[Long], brand_id: Option[Long], goods_num: Option[Int], intro_type: Option[String])
+GET     /cycle-image.xml                            controllers.AdController.cycleImage
+
+# --- M3: marketing & community --------------------------------------------
+GET     /api/v1/promotions                          controllers.PromotionController.promotions(page: Option[Int], page_size: Option[Int])
+GET     /api/v1/promotions/:id                      controllers.PromotionController.promotion(id: Long)
+GET     /api/v1/activities                          controllers.PromotionController.activities
+GET     /api/v1/packages                            controllers.PromotionController.packages
+GET     /api/v1/topics/:id                          controllers.PromotionController.topic(id: Long)
+GET     /api/v1/votes/current                       controllers.PromotionController.voteCurrent
+POST    /api/v1/votes/:id/responses                 controllers.PromotionController.voteRespond(id: Long)
+GET     /api/v1/exchange-goods                      controllers.PromotionController.exchangeGoods(category_id: Option[Int], integral_min: Option[Long], integral_max: Option[Long], page: Option[Int], page_size: Option[Int], sort: Option[String])
+GET     /api/v1/exchange-goods/:id                  controllers.PromotionController.exchangeGoodsDetail(id: Long)
+GET     /api/v1/tags                                controllers.TagController.cloud
+GET     /api/v1/shipping-options                    controllers.ShippingOptionController.list(country_id: Option[Long], province_id: Option[Long], city_id: Option[Long], district_id: Option[Long])
+
+GET     /api/v1/messages                            controllers.MessageController.index(page: Option[Int], page_size: Option[Int])
+POST    /api/v1/messages                            controllers.MessageController.create
+GET     /api/v1/ads/:id                             controllers.AdController.detail(id: Long)
+POST    /api/v1/ads/:id/click                       controllers.AdController.click(id: Long)
+
+GET     /api/v1/goods/:id/comments                  controllers.CommentController.forGoods(id: Long, page: Option[Int], page_size: Option[Int])
+POST    /api/v1/goods/:id/comments                  controllers.CommentController.createForGoods(id: Long)
+POST    /api/v1/goods/:id/tags                      controllers.TagController.addForGoods(id: Long)
+
+# --- M2: authentication ---------------------------------------------------
+POST    /api/v1/auth/register                       controllers.AuthController.register
+POST    /api/v1/auth/availability/username          controllers.AuthController.usernameAvailability
+POST    /api/v1/auth/availability/email             controllers.AuthController.emailAvailability
+POST    /api/v1/auth/login                          controllers.AuthController.login
+POST    /api/v1/auth/logout                         controllers.AuthController.logout
+POST    /api/v1/me/email-verifications              controllers.EmailVerificationController.request
+POST    /api/v1/email-verifications/confirm         controllers.EmailVerificationController.confirm
+POST    /api/v1/password-resets                     controllers.PasswordResetController.request
+POST    /api/v1/password-resets/confirm             controllers.PasswordResetController.confirm
+
+# --- M2: profile, wallet, addresses --------------------------------------
+GET     /api/v1/me                                  controllers.MeController.show
+PATCH   /api/v1/me                                  controllers.MeController.update
+PATCH   /api/v1/me/password                         controllers.MeController.updatePassword
+GET     /api/v1/me/bonuses                          controllers.BonusController.index
+POST    /api/v1/me/bonuses/claim                    controllers.BonusController.claim
+GET     /api/v1/me/account/requests                 controllers.AccountController.listRequests(page: Option[Int], page_size: Option[Int])
+POST    /api/v1/me/account/requests                 controllers.AccountController.createRequest
+DELETE  /api/v1/me/account/requests/:id             controllers.AccountController.cancelRequest(id: Long)
+GET     /api/v1/me/account/transactions             controllers.AccountController.transactions(page: Option[Int], page_size: Option[Int])
+POST    /api/v1/me/account/requests/:id/payment     controllers.AccountController.payRequest(id: Long)
+
+GET     /api/v1/me/addresses                        controllers.AddressController.index
+POST    /api/v1/me/addresses                        controllers.AddressController.create
+PATCH   /api/v1/me/addresses/:id                    controllers.AddressController.update(id: Long)
+DELETE  /api/v1/me/addresses/:id                    controllers.AddressController.destroy(id: Long)
+
+GET     /api/v1/me/favorites                        controllers.FavoriteController.index(page: Option[Int], page_size: Option[Int])
+POST    /api/v1/me/favorites                        controllers.FavoriteController.create
+PATCH   /api/v1/me/favorites/:id                    controllers.FavoriteController.update(id: Long)
+DELETE  /api/v1/me/favorites/:id                    controllers.FavoriteController.destroy(id: Long)
+
+GET     /api/v1/me/tags                             controllers.TagController.mine(page: Option[Int], page_size: Option[Int])
+DELETE  /api/v1/me/tags                             controllers.TagController.destroyMine
+GET     /api/v1/me/bookings                         controllers.BookingController.index(page: Option[Int], page_size: Option[Int])
+POST    /api/v1/me/bookings                         controllers.BookingController.create
+DELETE  /api/v1/me/bookings/:id                     controllers.BookingController.destroy(id: Long)
+GET     /api/v1/me/comments                         controllers.CommentController.mine(page: Option[Int], page_size: Option[Int])
+DELETE  /api/v1/me/comments/:id                     controllers.CommentController.destroy(id: Long)
+GET     /api/v1/me/messages                         controllers.MessageController.mine(page: Option[Int], page_size: Option[Int])
+DELETE  /api/v1/me/messages/:id                     controllers.MessageController.destroy(id: Long)
+POST    /api/v1/newsletter-subscriptions            controllers.NewsletterController.subscribe
+DELETE  /api/v1/newsletter-subscriptions            controllers.NewsletterController.unsubscribe
+POST    /api/v1/newsletter-subscriptions/confirm     controllers.NewsletterController.confirmSubscribe
+POST    /api/v1/newsletter-unsubscriptions/confirm   controllers.NewsletterController.confirmUnsubscribe
+
+# --- M2: cart, checkout, orders ------------------------------------------
+GET     /api/v1/me/cart                             controllers.CartController.index
+POST    /api/v1/me/cart                             controllers.CartController.create
+PATCH   /api/v1/me/cart/:id                         controllers.CartController.update(id: Long)
+DELETE  /api/v1/me/cart/:id                         controllers.CartController.destroy(id: Long)
+GET     /api/v1/checkout/options                    controllers.CheckoutController.options
+POST    /api/v1/checkout/quote                      controllers.CheckoutController.quote
+POST    /api/v1/orders                              controllers.OrderController.create
+GET     /api/v1/me/orders                           controllers.OrderController.index(page: Option[Int], page_size: Option[Int])
+POST    /api/v1/me/orders/merge                     controllers.OrderController.merge
+GET     /api/v1/me/orders/:id                       controllers.OrderController.show(id: Long)
+GET     /api/v1/me/orders/by-number/:orderSn/status controllers.OrderController.statusByNumber(orderSn: String)
+POST    /api/v1/me/orders/:id/cancel                controllers.OrderController.cancel(id: Long)
+POST    /api/v1/me/orders/:id/received              controllers.OrderController.confirmReceived(id: Long)
+POST    /api/v1/me/orders/:id/cart                  controllers.OrderController.returnToCart(id: Long)
+PATCH   /api/v1/me/orders/:id/surplus               controllers.OrderController.applySurplus(id: Long)
+PATCH   /api/v1/me/orders/:id/payment               controllers.OrderController.changePayment(id: Long)
+PATCH   /api/v1/me/orders/:id/address               controllers.OrderController.changeAddress(id: Long)
+GET     /api/v1/me/group-buys                       controllers.OrderController.groupBuys(page: Option[Int], page_size: Option[Int])
+GET     /api/v1/me/group-buys/:id                   controllers.OrderController.groupBuy(id: Long)
+GET     /api/v1/me/affiliate                        controllers.OrderController.affiliate(page: Option[Int], page_size: Option[Int])
+GET     /api/v1/me/shipments                        controllers.OrderController.shipments(page: Option[Int], page_size: Option[Int])
+GET     /api/v1/me/points/conversion-options        controllers.OrderController.pointOptions
+POST    /api/v1/me/points/conversions               controllers.OrderController.convertPoints
+DELETE  /api/v1/me/browsing-history                 controllers.OrderController.clearBrowsingHistory
+
+# --- M2: payment gateway callbacks ---------------------------------------
+POST    /api/v1/payments/:provider/callback         controllers.PaymentCallbackController.callback(provider: String)
