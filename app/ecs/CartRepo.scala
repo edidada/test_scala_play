@@ -75,20 +75,30 @@ class CartRepo @Inject() (db: Db):
         val wanted = already + quantity
         if wanted > goods.long("stock") then Left(CartFailure.OutOfStock(goods.str("goods_name"), goods.long("stock")))
         else
-          val columns = Seq("user_id", "goods_id", "attr_signature", "goods_number", "version", "created_at", "updated_at")
-          val assignments = db.dialect match
-            case Dialect.SQLite =>
-              Seq("goods_number" -> "cart.goods_number + excluded.goods_number",
-                "version" -> "cart.version + 1", "updated_at" -> "excluded.updated_at")
-            case Dialect.MySQL =>
-              Seq("goods_number" -> "goods_number + VALUES(goods_number)",
-                "version" -> "version + 1", "updated_at" -> "VALUES(updated_at)")
-          val sql = Sql.upsert(db.dialect, "cart", columns, columns.map(_ => "?"),
-            Seq("user_id", "goods_id", "attr_signature"), assignments)
-          db.execute(conn, sql, Seq(userId, goodsId, "", quantity, 1, ApiJson.nowUtc, ApiJson.nowUtc))
+          mergeQuantity(conn, userId, goodsId, quantity)
           lineOf(conn, userId, goodsId) match
             case Some(line) => Right(line)
             case None       => Left(CartFailure.NotFound)
+
+  /**
+   * Add `quantity` to the plain line of one goods row, creating it when missing.
+   *
+   * The unique key does the arithmetic atomically in both dialects, so two callers
+   * adding at the same moment end up with one line that has both quantities. Order
+   * cancellation and "return to cart" reuse this without the stock ceiling check.
+   */
+  def mergeQuantity(conn: Connection, userId: Long, goodsId: Long, quantity: Long): Unit =
+    val columns = Seq("user_id", "goods_id", "attr_signature", "goods_number", "version", "created_at", "updated_at")
+    val assignments = db.dialect match
+      case Dialect.SQLite =>
+        Seq("goods_number" -> "cart.goods_number + excluded.goods_number",
+          "version" -> "cart.version + 1", "updated_at" -> "excluded.updated_at")
+      case Dialect.MySQL =>
+        Seq("goods_number" -> "goods_number + VALUES(goods_number)",
+          "version" -> "version + 1", "updated_at" -> "VALUES(updated_at)")
+    val sql = Sql.upsert(db.dialect, "cart", columns, columns.map(_ => "?"),
+      Seq("user_id", "goods_id", "attr_signature"), assignments)
+    db.execute(conn, sql, Seq(userId, goodsId, "", quantity, 1, ApiJson.nowUtc, ApiJson.nowUtc))
 
   /**
    * `PATCH /api/v1/me/cart/{id}` — the update carries the version it read, so a
