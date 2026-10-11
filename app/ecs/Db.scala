@@ -166,3 +166,8 @@ object Sql:
 
   /** Placeholder list for `n` values. */
   def marks(n: Int): String = List.fill(n)("?").mkString(", ")
+
+  /** Random ordering function of the active dialect (legacy `order_type=rand`). */
+  def random(dialect: Dialect): String = dialect match
+    case Dialect.MySQL  => "RAND()"
+    case Dialect.SQLite => "RANDOM()"
