@@ -6,7 +6,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 
-import play.api.libs.json.Json
+import play.api.libs.json.{JsObject, JsString, JsValue}
 
 /**
  * Password and token crypto.
@@ -67,6 +67,12 @@ object Crypto:
   def attrSignature(attributeIds: Seq[Long]): String =
     sha256Hex(attributeIds.sorted.mkString(","))
 
-  /** Request fingerprint that makes an idempotency-key replay detectable. */
+  /**
+   * Request fingerprint that makes an idempotency-key replay detectable.
+   *
+   * The fields are sorted by name and rendered as one JSON object, so the same logical
+   * request fingerprints identically whatever order the caller listed its fields in, and
+   * a value that contains a separator can never be mistaken for two fields.
+   */
   def fingerprint(parts: (String, String)*): String =
-    Json.toJson(parts.toMap).toString
+    JsObject(parts.toMap.toList.sortBy(_._1).map { case (key, value) => key -> (JsString(value): JsValue) }).toString
