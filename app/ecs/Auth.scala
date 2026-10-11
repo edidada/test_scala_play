@@ -9,7 +9,9 @@ import scala.concurrent.{ExecutionContext, Future}
 /** The authenticated principal, resolved from the bearer token only. */
 final case class AuthUser(id: Long, userName: String, email: String)
 
-final class AuthedRequest[A](val user: AuthUser, request: Request[A]) extends WrappedRequest[A](request)
+final class AuthedRequest[A](val user: AuthUser, request: Request[A]) extends WrappedRequest[A](request):
+  /** The controller mix-in reads the request through this alias. */
+  def requestHeader: Request[A] = request
 
 /**
  * `Authorization: Bearer <token>` action builder.
@@ -39,6 +41,12 @@ class AuthedAction @Inject() (val parser: BodyParsers.Default, db: Db)(implicit 
     userOf(request.headers) match
       case Some(user) => block(new AuthedRequest(user, request))
       case None       => Future.successful(ApiError.unauthorized("a valid bearer token is required", request))
+
+  /*
+   * Endpoints use the builder directly, which keeps the synchronous `Result`
+   * style of the rest of the API:
+   *   `authed { req => ... }` and `authed(parse.json) { req => ... }`.
+   */
 
 /** JSON body helper: every API mutation reads its fields through this. */
 final class Body(private val json: JsValue):
