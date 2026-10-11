@@ -57,11 +57,8 @@ class Bootstrap @Inject() (config: Configuration, env: Environment, db: Db):
 
   // Runs from the Guice eager-singleton path, before the first request serves traffic.
   locally {
-    if db.isSQLite then
-      val target = new File("data")
-      if !target.exists() then target.mkdirs()
-    val ddl = if db.isSQLite then config.get[String]("db.boot.sqlite.ddl") else config.get[String]("db.boot.mysql.ddl")
-    val seed = if db.isSQLite then config.get[String]("db.boot.sqlite.seed") else config.get[String]("db.boot.mysql.seed")
+    val ddl = if db.isSQLite then config.get[String]("ecshop.boot.sqlite.ddl") else config.get[String]("ecshop.boot.mysql.ddl")
+    val seed = if db.isSQLite then config.get[String]("ecshop.boot.sqlite.seed") else config.get[String]("ecshop.boot.mysql.seed")
     val applied = db.inTransaction { conn => run(conn, ddl) + run(conn, seed) }
     log.info(s"ECShop schema bootstrap applied $applied statements for ${db.dialect}")
   }
@@ -69,4 +66,11 @@ class Bootstrap @Inject() (config: Configuration, env: Environment, db: Db):
 /** Guice bindings for the application. */
 class AppModule extends AbstractModule:
   override def configure(): Unit =
+    // SQLite cannot create its database file when the parent directory is missing, and the
+    // connection pool materialises before any singleton runs. Create ./data here, during
+    // injector construction, so `jdbc:sqlite:data/ecshop.sqlite3` opens cleanly.
+    if sys.env.get("DB_DRIVER").forall(_.contains("sqlite")) then
+      val dir = new File("data")
+      if !dir.exists() && !dir.mkdirs() then
+        sys.error(s"could not create SQLite data directory ${dir.getAbsolutePath}")
     bind(classOf[Bootstrap]).asEagerSingleton()
