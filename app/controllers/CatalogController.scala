@@ -1,11 +1,11 @@
 package controllers
 
-import ecs.{CatalogRepo, Db, Paging}
+import ecs.{ApiError, CatalogRepo, Db, GoodsRepo, Paging}
 import javax.inject.Inject
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
 
-/** `GET /api/v1/catalog`, `GET /api/v1/brands` — maps PHP `catalog.php` / `brand.php`. */
-class CatalogController @Inject() (cc: ControllerComponents, db: Db, catalogRepo: CatalogRepo)
+/** `GET /api/v1/catalog`, `/api/v1/brands*` — maps PHP `catalog.php` / `brand.php`. */
+class CatalogController @Inject() (cc: ControllerComponents, db: Db, catalogRepo: CatalogRepo, goodsRepo: GoodsRepo)
   extends AbstractController(cc) with ApiSupport:
 
   def catalog: Action[AnyContent] = Action {
@@ -19,4 +19,11 @@ class CatalogController @Inject() (cc: ControllerComponents, db: Db, catalogRepo
   }
 
   def brandGoods(id: Long, page: Option[Int], page_size: Option[Int], sort: Option[String]): Action[AnyContent] =
-    Action { req => notReady("GET /api/v1/brands/{id}/goods")(req) }
+    Action { req =>
+      orFail(Paging.of(page, page_size), req) { p =>
+        db.readOnly { conn =>
+          if !goodsRepo.brandVisible(conn, id) then ApiError.notFound("brand not found", req)
+          else Ok(goodsRepo.list(conn, "g.brand_id = ?", Seq(id), p, sort))
+        }
+      }
+    }

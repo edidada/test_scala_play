@@ -15,8 +15,8 @@ import javax.inject.{Inject, Singleton}
 @Singleton
 class CatalogRepo @Inject() (db: Db):
 
-  /** Goods a shopper is allowed to browse and buy. */
-  val Visible: String = "g.is_on_sale = 1 AND g.is_delete = 0 AND g.is_alone_sale = 1"
+  /** Goods a shopper is allowed to browse and buy (shared with [[GoodsRepo]]). */
+  val Visible: String = GoodsRepo.Visible
 
   private val CategorySql: String =
     """SELECT c.cat_id, c.parent_id, c.cat_name, c.sort_order, c.keywords,
