@@ -3,6 +3,8 @@ name: CI
 # The build is the same on every branch: compile, then the contract and end-to-end suites.
 # `third_party/shopex-ecshop` stays unchecked out — it is reference material for the port,
 # and the tests only need SQLite, which ships inside the sqlite-jdbc dependency.
+# Action majors are current on purpose: v4 `checkout`/`setup-java`/`cache` still run on the
+# retired Node 20 and announce themselves as deprecated in every job log.
 
 on:
   push:
@@ -28,10 +30,10 @@ jobs:
 
     steps:
       - name: Check out the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
@@ -40,7 +42,7 @@ jobs:
         uses: sbt/setup-sbt@v1
 
       - name: Cache coursier, ivy and sbt
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/coursier
@@ -61,7 +63,7 @@ jobs:
 
       - name: Upload test reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: target-tests-${{ matrix.os }}-jdk${{ matrix.java }}
           path: |
