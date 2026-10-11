@@ -34,3 +34,10 @@
 | M3 | 结算、下单、库存扣减 | 事务内创建订单与订单项 |
 | M4 | 支付回调、发货、取消/退款 | 幂等回调和订单状态机 |
 | M5 | 后台、促销、内容、监控 | 权限、审计、指标和备份 |
+
+## Scala Play 实现文档（2026-10-11 追加）
+
+上面 1–12 条是 C++ 阶段的规划文档，原文未改动。仓库最终落地的是 Scala Play 版，新增：
+
+- [09_url_completion_matrix.md](09_url_completion_matrix.md)：PHP 能力覆盖审计，文末「Scala Play 实现状态」记录 102 条 URL 的实现与验证结果。
+- [11_scala_play_architecture.md](11_scala_play_architecture.md)：按当前代码画的分层图、下单与支付回调时序图、真实订单状态机、依赖注入图与配置边界。

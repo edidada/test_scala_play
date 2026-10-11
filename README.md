@@ -138,3 +138,4 @@ CI 六条腿全绿（ubuntu 与 windows 的 job 日志里都有 `All tests passe
 - [docs/09_url_completion_matrix.md](docs/09_url_completion_matrix.md)：PHP 能力覆盖审计清单
 - [docs/sql/README.md](docs/sql/README.md)：原始 88 张表与导入次序
 - [docs/deploy/README.md](docs/deploy/README.md)：Docker / Nginx / systemd 部署模板
+- [docs/11_scala_play_architecture.md](docs/11_scala_play_architecture.md)：按当前代码画的分层图、下单/回调时序图与订单状态机

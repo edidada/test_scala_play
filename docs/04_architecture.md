@@ -55,3 +55,14 @@ PHP 的 `order_status`、`shipping_status`、`pay_status` 是多个整数列。C
 - 事务由 Application 层建立：`PlaceOrder` 一次事务；第三方网络调用在提交后执行，回调再单独事务处理。
 - 图片只保存对象存储 key/URL，不存入订单行的可变商品资料；`order_goods` 写入下单时名称、规格、成交价快照。
 
+
+---
+
+## 补充（2026-10-11，Scala Play 实现）
+
+本文上面的分层图描述的是更早的 C++ 方案（Crow + Redis + UseCase/Handler，订单含
+`shipped`、`refunding` 写入路径）。那套没有在本仓库落地，落地的是 Scala Play 版：
+没有 Redis、没有独立 Application 层，事务边界由 Controller 用 `db.readOnly` /
+`db.inTransaction` 打开，Repo 方法以 `conn` 打头，订单只有
+`pending_payment → paid → received`（以及 `pending_payment → cancelled`）四条迁移。
+按当前代码画的架构图、请求时序图与状态机见 [11_scala_play_architecture.md](11_scala_play_architecture.md)。
