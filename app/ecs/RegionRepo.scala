@@ -48,3 +48,50 @@ class RegionRepo @Inject() (db: Db):
         "code" -> r.str("shipping_code"),
         "fee"  -> ApiJson.money(r.dec("shipping_fee"))
       ))
+
+  private def childrenRows(conn: Connection, parentId: Long): List[Row] =
+    db.rows(conn,
+      "SELECT region_id, parent_id, region_name, region_type FROM region WHERE parent_id = ? ORDER BY region_id",
+      Seq(parentId))
+
+  /**
+   * `GET /api/v1/shipping-options` (PHP `myship.php`): the current selection, the
+   * candidates of every level and the enabled carriers.
+   *
+   * Each level is checked against the children of the level above it, so a client
+   * cannot pair a city with a province it does not belong to.
+   */
+  def shippingSelection(conn: Connection, country: Option[Long], province: Option[Long],
+    city: Option[Long], district: Option[Long]): Either[FieldError, JsObject] =
+
+    val countries = childrenRows(conn, 0L)
+    val chosenCountry = country.orElse(countries.map(_.long("region_id")).headOption)
+    val provinces = chosenCountry.map(childrenRows(conn, _)).getOrElse(Nil)
+    val cities = province.map(childrenRows(conn, _)).getOrElse(Nil)
+    val districts = city.map(childrenRows(conn, _)).getOrElse(Nil)
+
+    val invalid =
+      country.filterNot(c => countries.exists(_.long("region_id") == c))
+        .map(c => FieldError("country_id", s"country_id $c is not a country"))
+        .orElse(province.filterNot(p => provinces.exists(_.long("region_id") == p))
+          .map(p => FieldError("province_id", s"province_id $p is not a province of country_id")))
+        .orElse(city.filterNot(c => cities.exists(_.long("region_id") == c))
+          .map(c => FieldError("city_id", s"city_id $c is not a city of province_id")))
+        .orElse(district.filterNot(d => districts.exists(_.long("region_id") == d))
+          .map(d => FieldError("district_id", s"district_id $d is not a district of city_id")))
+
+    invalid.toLeft(
+      Json.obj(
+        "selected" -> Json.obj(
+          "country_id"  -> chosenCountry.getOrElse(0L),
+          "province_id" -> province.getOrElse(0L),
+          "city_id"     -> city.getOrElse(0L),
+          "district_id" -> district.getOrElse(0L)
+        ),
+        "countries"        -> Json.toJson(countries.map(project)),
+        "provinces"        -> Json.toJson(provinces.map(project)),
+        "cities"           -> Json.toJson(cities.map(project)),
+        "districts"        -> Json.toJson(districts.map(project)),
+        "shipping_options" -> Json.toJson(shippingOptions(conn))
+      )
+    )
