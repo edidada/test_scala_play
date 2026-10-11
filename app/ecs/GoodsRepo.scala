@@ -83,6 +83,54 @@ class GoodsRepo @Inject() (db: Db):
     val clause = if conditions.isEmpty then "1 = 1" else conditions.mkString(" AND ")
     list(conn, clause, params.toList, page, sort)
 
+  /**
+   * Display-only price quote (PHP `goods.php?act=price`).
+   *
+   * The unit price is the storefront price plus the price of every selected
+   * attribute row; stock is the goods stock clipped by the SKU stock when a
+   * product is chosen. Order creation always recomputes from the database.
+   */
+  def priceQuote(conn: Connection, goodsId: Long, quantity: Long, productId: Option[Long],
+    attributeIds: List[Long]): Either[QuoteFailure, JsObject] =
+    val sql =
+      s"""SELECT ${Views.goodsColumns("g")}
+         |FROM goods g
+         |WHERE g.goods_id = ? AND g.is_delete = 0 AND g.is_on_sale = 1 AND g.is_alone_sale = 1""".stripMargin
+    db.row(conn, sql, Seq(goodsId)) match
+      case None => Left(QuoteFailure.GoodsNotFound)
+      case Some(row) =>
+        val now = ApiJson.nowUnix
+        if attributeIds.isEmpty then Right(quote(row, quantity, Nil, None, now))
+        else
+          val marks = Sql.marks(attributeIds.size)
+          val owned = db.count(conn,
+            s"SELECT COUNT(*) FROM goods_attr WHERE goods_id = ? AND goods_attr_id IN ($marks)",
+            goodsId +: attributeIds)
+          if owned != attributeIds.size.toLong then Left(QuoteFailure.AttributeNotOwned)
+          else
+            val chosen = db.rows(conn,
+              s"SELECT goods_attr_id, attr_price FROM goods_attr WHERE goods_id = ? AND goods_attr_id IN ($marks)",
+              goodsId +: attributeIds)
+            productId match
+              case None => Right(quote(row, quantity, chosen, None, now))
+              case Some(pid) =>
+                db.row(conn, "SELECT product_number FROM products WHERE product_id = ? AND goods_id = ?", Seq(pid, goodsId)) match
+                  case None => Left(QuoteFailure.ProductNotOwned)
+                  case Some(product) => Right(quote(row, quantity, chosen, Some(product.long("product_number")), now))
+
+  private def quote(row: Row, quantity: Long, chosen: List[Row], productStock: Option[Long], now: Long): JsObject =
+    val attributeDelta = chosen.foldLeft(BigDecimal(0))((acc, r) => acc + r.dec("attr_price"))
+    val unit = (Views.goodsPrice(row, now) + attributeDelta).setScale(2, BigDecimal.RoundingMode.HALF_UP)
+    val stock = productStock.fold(row.long("goods_number"))(s => math.min(s, row.long("goods_number")))
+    Json.obj(
+      "goods_id"         -> row.long("goods_id"),
+      "quantity"         -> quantity,
+      "unit_price"       -> ApiJson.money(unit),
+      "total"            -> ApiJson.money(unit * BigDecimal(quantity)),
+      "currency"         -> "CNY",
+      "stock_available"  -> stock
+    )
+
   /** Existence check for a brand that shoppers may open. */  def brandVisible(conn: Connection, brandId: Long): Boolean =
     db.row(conn, "SELECT brand_id FROM brand WHERE brand_id = ? AND is_show = 1", Seq(brandId)).isDefined
 
@@ -153,6 +201,10 @@ class GoodsRepo @Inject() (db: Db):
         "stock"        -> r.long("product_number"),
         "product_attr" -> r.str("product_attr")
       ))
+
+/** Why a display price quote could not be produced. */
+enum QuoteFailure:
+  case GoodsNotFound, AttributeNotOwned, ProductNotOwned
 
 object GoodsRepo:
   /** Browseable goods; the single definition shared by every goods read. */
