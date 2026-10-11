@@ -221,3 +221,75 @@ class MarketingRepo @Inject() (db: Db):
          |ORDER BY a.end_time ASC, a.act_id ASC
          |LIMIT ? OFFSET ?""".stripMargin, params ++ Seq(page.pageSize, page.offset))
     ApiJson.page(page.page, page.pageSize, total, rows.map(activityProject))
+
+  /** One vote row plus its option counters; shared by reads and ballots. */
+  private def voteProject(conn: Connection, vote: Row): JsObject =
+    val options = db.rows(conn,
+      """SELECT option_id, option_name, option_count
+        |FROM vote_option
+        |WHERE vote_id = ?
+        |ORDER BY option_order ASC, option_id ASC""".stripMargin, Seq(vote.long("vote_id")))
+    Json.obj(
+      "id"           -> vote.long("vote_id"),
+      "name"         -> vote.str("vote_name"),
+      "start_time"   -> vote.long("start_time"),
+      "end_time"     -> vote.long("end_time"),
+      "multi_select" -> vote.bool("can_multi"),
+      "vote_count"   -> vote.long("vote_count"),
+      "options" -> Json.toJson(options.map(o => Json.obj(
+        "id"    -> o.long("option_id"),
+        "name"  -> o.str("option_name"),
+        "count" -> o.long("option_count")
+      )))
+    )
+
+  /** `GET /api/v1/votes/current` — the newest vote inside its time window. */
+  def currentVote(conn: Connection): Option[JsObject] =
+    val now = ApiJson.nowUnix
+    db.row(conn,
+      """SELECT vote_id, vote_name, start_time, end_time, can_multi, vote_count
+        |FROM vote
+        |WHERE start_time <= ? AND end_time >= ?
+        |ORDER BY vote_id DESC, start_time DESC
+        |LIMIT 1""".stripMargin, Seq(now, now))
+      .map(voteProject(conn, _))
+
+  /**
+   * `POST /api/v1/votes/{id}/responses` — one ballot per socket address.
+   *
+   * The caller must run this inside a transaction: the vote row is locked first,
+   * so the `(vote_id, ip_address)` existence check and the counter updates cannot
+   * race with a concurrent submission for the same vote.
+   */
+  def respond(conn: Connection, voteId: Long, optionIds: List[Long], ip: String): Either[VoteFailure, JsObject] =
+    val now = ApiJson.nowUnix
+    db.row(conn,
+      s"""SELECT vote_id, vote_name, start_time, end_time, can_multi, vote_count
+         |FROM vote WHERE vote_id = ?${Sql.forUpdate(db.dialect)}""".stripMargin, Seq(voteId)) match
+      case None => Left(VoteFailure.NotFound)
+      case Some(vote) if vote.long("start_time") > now || vote.long("end_time") < now =>
+        Left(VoteFailure.Closed)
+      case Some(vote) if optionIds.exists(_ < 1) => Left(VoteFailure.OptionNotOwned)
+      case Some(vote) if !vote.bool("can_multi") && optionIds.size > 1 => Left(VoteFailure.NotMultiple)
+      case Some(vote) =>
+        val marks = Sql.marks(optionIds.size)
+        val owned = db.count(conn,
+          s"SELECT COUNT(*) FROM vote_option WHERE vote_id = ? AND option_id IN ($marks)", voteId +: optionIds)
+        if owned != optionIds.size.toLong then Left(VoteFailure.OptionNotOwned)
+        else if db.row(conn, "SELECT log_id FROM vote_log WHERE vote_id = ? AND ip_address = ?", Seq(voteId, ip)).isDefined then
+          Left(VoteFailure.Duplicate)
+        else
+          db.execute(conn,
+            "INSERT INTO vote_log (vote_id, ip_address, vote_time) VALUES (?, ?, ?)", Seq(voteId, ip, now))
+          db.execute(conn,
+            s"UPDATE vote_option SET option_count = option_count + 1 WHERE vote_id = ? AND option_id IN ($marks)",
+            voteId +: optionIds)
+          db.execute(conn, "UPDATE vote SET vote_count = vote_count + 1 WHERE vote_id = ?", Seq(voteId))
+          val updated = db.row(conn,
+            "SELECT vote_id, vote_name, start_time, end_time, can_multi, vote_count FROM vote WHERE vote_id = ?",
+            Seq(voteId))
+          Right(voteProject(conn, updated.getOrElse(vote)))
+
+/** Why a ballot was refused (docs/03_api_contract.md, votes section). */
+enum VoteFailure:
+  case NotFound, Closed, OptionNotOwned, NotMultiple, Duplicate
