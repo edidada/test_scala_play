@@ -87,11 +87,31 @@ class PromotionController @Inject() (cc: ControllerComponents, db: Db, marketing
     }
   }
 
+  /** `GET /api/v1/exchange-goods` — maps PHP `exchange.php?act=list`. */
   def exchangeGoods(category_id: Option[Int], integral_min: Option[Long], integral_max: Option[Long],
-    page: Option[Int], page_size: Option[Int], sort: Option[String]): Action[AnyContent] =
-    Action { req => notReady("GET /api/v1/exchange-goods")(req) }
+    page: Option[Int], page_size: Option[Int], sort: Option[String]): Action[AnyContent] = Action { req =>
+    val parsed =
+      for
+        p <- Paging.of(page, page_size)
+        cat = category_id.map(_.toLong)
+        range <- PromotionController.integralRange(integral_min, integral_max)
+        column <- PromotionController.oneOf(sort, marketing.ExchangeSorts, "sort", "x.goods_id")
+        desc <- PromotionController.direction(req.getQueryString("order"))
+      yield (p, cat, range._1, range._2, column, desc)
 
-  def exchangeGoodsDetail(id: Long): Action[AnyContent] = Action { req => notReady("GET /api/v1/exchange-goods/{id}")(req) }
+    orFail(parsed, req) { case (p, cat, min, max, column, desc) =>
+      Ok(db.readOnly(conn => marketing.exchangeGoods(conn, cat, min, max, p, column, desc)))
+    }
+  }
+
+  /** `GET /api/v1/exchange-goods/{id}` — maps PHP `exchange.php?act=detail`. */
+  def exchangeGoodsDetail(id: Long): Action[AnyContent] = Action { req =>
+    db.readOnly { conn =>
+      marketing.exchangeDetail(conn, id) match
+        case Some(payload) => Ok(payload)
+        case None          => ApiError.notFound("exchange goods not found", req)
+    }
+  }
 
 object PromotionController:
   /** `type` is a reserved route word, so it is read from the query string. */
@@ -111,3 +131,24 @@ object PromotionController:
   def ballotIp(req: Request[?]): String =
     val raw = Option(req.remoteAddress).map(_.trim).filter(_.nonEmpty).getOrElse("unknown")
     if raw.length <= 45 then raw else raw.take(45)
+
+  /** Query-string `sort` must name a whitelisted column. */
+  def oneOf(raw: Option[String], allowed: Map[String, String], field: String, default: String): Either[FieldError, String] =
+    raw.map(_.trim).filter(_.nonEmpty) match
+      case None     => Right(default)
+      case Some(t)  => allowed.get(t).toRight(FieldError(field, s"$field must be one of ${allowed.keys.toSeq.sorted.mkString(", ")}"))
+
+  /** `order=asc|desc`; anything else is a 400. */
+  def direction(raw: Option[String]): Either[FieldError, Boolean] =
+    raw.map(_.trim.toLowerCase).filter(_.nonEmpty) match
+      case None | Some("asc") => Right(false)
+      case Some("desc")       => Right(true)
+      case Some(_)            => Left(FieldError("order", "order must be asc or desc"))
+
+  /** Integral window bounds: non-negative and min <= max. */
+  def integralRange(min: Option[Long], max: Option[Long]): Either[FieldError, (Option[Long], Option[Long])] =
+    if min.exists(_ < 0) then Left(FieldError("integral_min", "integral_min must not be negative"))
+    else if max.exists(_ < 0) then Left(FieldError("integral_max", "integral_max must not be negative"))
+    else if min.zip(max).exists { case (lo, hi) => lo > hi } then
+      Left(FieldError("integral_max", "integral_min must not exceed integral_max"))
+    else Right((min, max))

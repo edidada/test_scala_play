@@ -4,6 +4,7 @@ import play.api.libs.json.{JsObject, JsValue, Json}
 
 import java.sql.Connection
 import javax.inject.{Inject, Singleton}
+import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 
 /**
@@ -14,7 +15,7 @@ import scala.util.Try
  * extend or shorten an activity by sending its own timestamp.
  */
 @Singleton
-class MarketingRepo @Inject() (db: Db):
+class MarketingRepo @Inject() (db: Db, goods: GoodsRepo):
 
   /** Legacy act_type values of the goods_activity table. */
   val ActivityTypes: Set[Int] = Set(0, 1, 2, 3, 4)
@@ -289,6 +290,60 @@ class MarketingRepo @Inject() (db: Db):
             "SELECT vote_id, vote_name, start_time, end_time, can_multi, vote_count FROM vote WHERE vote_id = ?",
             Seq(voteId))
           Right(voteProject(conn, updated.getOrElse(vote)))
+
+  /** Column whitelist for `GET /api/v1/exchange-goods?sort=`. */
+  val ExchangeSorts: Map[String, String] = Map(
+    "goods_id"          -> "x.goods_id",
+    "exchange_integral" -> "x.exchange_integral",
+    "last_update"       -> "g.last_update"
+  )
+
+  private def exchangeProject(row: Row): JsObject =
+    Views.goodsSummary(row) ++ Json.obj(
+      "exchange_integral" -> row.long("exchange_integral"),
+      "exchange_is_hot"   -> row.bool("exchange_is_hot")
+    )
+
+  /**
+   * `GET /api/v1/exchange-goods` (PHP `exchange.php?act=list`).
+   *
+   * `sort` arrives already whitelisted by the controller, so no client text can
+   * reach the ORDER BY clause; ids and integrals stay parameterised.
+   */
+  def exchangeGoods(conn: Connection, categoryId: Option[Long], integralMin: Option[Long],
+    integralMax: Option[Long], page: Paging.Page, sortColumn: String, desc: Boolean): JsObject =
+
+    val conditions = ArrayBuffer("x.is_exchange = 1", GoodsRepo.Visible)
+    val params = ArrayBuffer.empty[Any]
+
+    categoryId.foreach { cid =>
+      val ids = goods.categorySubtreeIds(conn, cid)
+      conditions += s"g.cat_id IN (${Sql.marks(ids.size)})"
+      params ++= ids
+    }
+    integralMin.foreach { v => conditions += "x.exchange_integral >= ?"; params += v }
+    integralMax.foreach { v => conditions += "x.exchange_integral <= ?"; params += v }
+
+    val clause = conditions.mkString(" AND ")
+    val order = s"$sortColumn ${if desc then "DESC" else "ASC"}, x.goods_id ASC"
+    val from = "FROM exchange_goods x JOIN goods g ON g.goods_id = x.goods_id"
+
+    val total = db.count(conn, s"SELECT COUNT(*) $from WHERE $clause", params.toSeq)
+    val rows = db.rows(conn,
+      s"""SELECT ${Views.goodsColumns("g")}, x.exchange_integral, x.is_hot AS exchange_is_hot
+         |$from
+         |WHERE $clause
+         |ORDER BY $order
+         |LIMIT ? OFFSET ?""".stripMargin, params.toSeq ++ Seq(page.pageSize, page.offset))
+    ApiJson.page(page.page, page.pageSize, total, rows.map(exchangeProject))
+
+  /** `GET /api/v1/exchange-goods/{id}` — 404 unless the exchange is enabled and the goods visible. */
+  def exchangeDetail(conn: Connection, goodsId: Long): Option[JsObject] =
+    db.row(conn,
+      s"""SELECT ${Views.goodsColumns("g")}, g.goods_desc, x.exchange_integral, x.is_hot AS exchange_is_hot
+         |FROM exchange_goods x JOIN goods g ON g.goods_id = x.goods_id
+         |WHERE x.goods_id = ? AND x.is_exchange = 1 AND ${GoodsRepo.Visible}""".stripMargin, Seq(goodsId))
+      .map(row => exchangeProject(row) ++ Json.obj("description" -> row.str("goods_desc")))
 
 /** Why a ballot was refused (docs/03_api_contract.md, votes section). */
 enum VoteFailure:
