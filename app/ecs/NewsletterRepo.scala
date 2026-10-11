@@ -1,6 +1,6 @@
 package ecs
 
-import play.api.libs.json.{JsObject, Json}
+import play.api.libs.json.Json
 
 import java.sql.Connection
 import java.time.Instant

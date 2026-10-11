@@ -3,7 +3,7 @@ package controllers
 import ecs.{ApiError, Body, Db, EmailAddress, ErrorCode, FieldError, NewsletterRepo}
 import javax.inject.Inject
 import play.api.libs.json.{JsValue, Json}
-import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents, Request, Result}
+import play.api.mvc.{AbstractController, Action, ControllerComponents, Request, Result}
 
 /**
  * Newsletter lifecycle — maps the four jobs of PHP user.php?act=email_list.

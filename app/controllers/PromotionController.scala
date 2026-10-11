@@ -2,7 +2,7 @@ package controllers
 
 import ecs.{ApiError, Body, Db, ErrorCode, FieldError, MarketingRepo, Paging, VoteFailure}
 import javax.inject.Inject
-import play.api.libs.json.{JsValue, Json}
+import play.api.libs.json.JsValue
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents, Request}
 
 /**

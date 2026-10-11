@@ -1,6 +1,6 @@
 package controllers
 
-import ecs.{ApiError, AuthedAction, Body, CartFailure, CartRepo, Db, ErrorCode, Paging}
+import ecs.{ApiError, AuthedAction, Body, CartFailure, CartRepo, Db, ErrorCode}
 import javax.inject.Inject
 import play.api.libs.json.{JsObject, JsValue}
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents, RequestHeader, Result}
