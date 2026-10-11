@@ -61,6 +61,13 @@ class CatalogRepo @Inject() (db: Db):
     val params = if key == "is_promote" then Seq(now, now) else Nil
     db.rows(conn, sql, params).map(row => Views.goodsSummary(row, now))
 
+  /** Payload of `GET /api/v1/catalog` (PHP `catalog.php`): flat, tree-ready lists. */
+  def catalog(conn: Connection): JsObject =
+    Json.obj(
+      "categories" -> Json.toJson(db.rows(conn, CategorySql, Nil).map(Views.category)),
+      "brands"     -> Json.toJson(db.rows(conn, BrandSql, Nil).map(Views.brand))
+    )
+
   /** Payload of `GET /api/v1/home` (PHP `index.php`). */
   def home(conn: Connection, limitPerGroup: Int): JsObject =
     val now = ApiJson.nowUnix
