@@ -48,6 +48,16 @@ class AuthedAction @Inject() (val parser: BodyParsers.Default, db: Db)(implicit 
    *   `authed { req => ... }` and `authed(parse.json) { req => ... }`.
    */
 
+object AuthedAction:
+  private val bearerPattern = """^\s*Bearer\s+(\S+)\s*$""".r
+
+  /** The raw bearer token of a request, without any validity check. */
+  def bearerOf(headers: Headers): Option[String] =
+    headers.get("Authorization").flatMap {
+      case bearerPattern(token) => Some(token)
+      case _                    => None
+    }
+
 /** JSON body helper: every API mutation reads its fields through this. */
 final class Body(private val json: JsValue):
   import play.api.libs.json.*
