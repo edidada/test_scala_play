@@ -95,8 +95,12 @@ class OrderRepo @Inject() (db: Db, cart: CartRepo):
           Right((summary(fresh(conn, userId, existing.long("order_id")).get), true))
         else Left(OrderFailure.IdempotencyConflict)
       case None =>
+        // `user_address` has no e-mail column; the order's contact address is the
+        // address row and the account e-mail comes from `users`.
         db.row(conn,
-          "SELECT consignee, email, address, mobile FROM user_address WHERE address_id = ? AND user_id = ?",
+          """SELECT a.consignee, a.address, a.mobile, u.email
+            |FROM user_address a JOIN users u ON u.user_id = a.user_id
+            |WHERE a.address_id = ? AND a.user_id = ?""".stripMargin,
           Seq(addressId, userId)) match
           case None => Left(OrderFailure.AddressNotFound)
           case Some(address) =>
