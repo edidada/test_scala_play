@@ -64,7 +64,7 @@ POST    /api/v1/password-resets/confirm             controllers.PasswordResetCon
 GET     /api/v1/me                                  controllers.MeController.show
 PATCH   /api/v1/me                                  controllers.MeController.update
 PATCH   /api/v1/me/password                         controllers.MeController.updatePassword
-GET     /api/v1/me/bonuses                          controllers.BonusController.index
+GET     /api/v1/me/bonuses                          controllers.BonusController.index(page: Option[Int], page_size: Option[Int])
 POST    /api/v1/me/bonuses/claim                    controllers.BonusController.claim
 GET     /api/v1/me/account/requests                 controllers.AccountController.listRequests(page: Option[Int], page_size: Option[Int])
 POST    /api/v1/me/account/requests                 controllers.AccountController.createRequest
