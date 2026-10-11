@@ -23,7 +23,7 @@ GET     /api/v1/regions                             controllers.RegionController
 GET     /api/v1/articles/:id                        controllers.ArticleController.detail(id: Long)
 GET     /api/v1/article-categories/:id/articles     controllers.ArticleController.categoryArticles(id: Long, page: Option[Int], page_size: Option[Int])
 GET     /sitemap.xml                                controllers.FeedController.sitemap
-GET     /feed.xml                                   controllers.FeedController.feed(cat: Option[Long], brand: Option[Long])
+GET     /feed.xml                                   controllers.FeedController.feed
 GET     /goods-widget.js                            controllers.WidgetController.goodsWidget(cat_id: Option[Long], brand_id: Option[Long], goods_num: Option[Int], intro_type: Option[String])
 GET     /cycle-image.xml                            controllers.AdController.cycleImage
 
