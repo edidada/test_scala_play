@@ -1,6 +1,6 @@
 package controllers
 
-import ecs.{ApiError, AuthedAction, Body, Db, FieldError, TagRepo}
+import ecs.{ApiError, AuthedAction, Body, Db, FieldError, Paging, TagRepo}
 import javax.inject.Inject
 import play.api.libs.json.JsValue
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
@@ -31,9 +31,27 @@ class TagController @Inject() (cc: ControllerComponents, db: Db, tags: TagRepo, 
     }
   }
 
-  def mine(page: Option[Int], page_size: Option[Int]): Action[AnyContent] = Action { req => notReady("GET /api/v1/me/tags")(req) }
+  /** `GET /api/v1/me/tags` — the bearer user's own tag words. */
+  def mine(page: Option[Int], page_size: Option[Int]): Action[AnyContent] = authed { req =>
+    orFail(Paging.of(page, page_size), req) { p =>
+      Ok(db.readOnly(conn => tags.mine(conn, req.user.id, p)))
+    }
+  }
 
-  def destroyMine: Action[AnyContent] = Action { req => notReady("DELETE /api/v1/me/tags")(req) }
+  /** `DELETE /api/v1/me/tags` — idempotent: a missing word still returns 204. */
+  def destroyMine: Action[JsValue] = authed(parse.json) { req =>
+    val body = Body(req.body)
+    val parsed =
+      for
+        raw <- body.str("tag", maxBytes = 255)
+        _ <- body.rejectUnknown(Set("tag")).toLeft(())
+      yield raw.trim
+
+    orFail(parsed, req) { word =>
+      db.inTransaction(conn => tags.deleteMine(conn, req.user.id, word))
+      NoContent
+    }
+  }
 
 object TagController:
   /** `tag` is 1--10 comma separated words, each at most 255 bytes. */

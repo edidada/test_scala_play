@@ -61,3 +61,26 @@ class TagRepo @Inject() (db: Db):
         }
         stats(conn, goodsId)
       }
+
+  /**
+   * `GET /api/v1/me/tags` (PHP `user.php?act=tag_list`).
+   *
+   * Only the bearer user's own rows are aggregated, so anonymous tags submitted
+   * with `user_id = 0` never show up in somebody's private list.
+   */
+  def mine(conn: Connection, userId: Long, page: Paging.Page): JsObject =
+    val total = db.count(conn,
+      "SELECT COUNT(DISTINCT tag_words) FROM tag WHERE user_id = ? AND tag_words <> ''", Seq(userId))
+    val rows = db.rows(conn,
+      """SELECT tag_words AS word, COUNT(*) AS uses
+        |FROM tag
+        |WHERE user_id = ? AND tag_words <> ''
+        |GROUP BY tag_words
+        |ORDER BY uses DESC, tag_words ASC
+        |LIMIT ? OFFSET ?""".stripMargin, Seq(userId, page.pageSize, page.offset))
+    ApiJson.page(page.page, page.pageSize, total,
+      rows.map(r => Json.obj("tag" -> r.str("word"), "count" -> r.long("uses"))))
+
+  /** `DELETE /api/v1/me/tags` — one word, only this user's rows; returns the count removed. */
+  def deleteMine(conn: Connection, userId: Long, word: String): Long =
+    db.execute(conn, "DELETE FROM tag WHERE user_id = ? AND tag_words = ?", Seq(userId, word)).toLong
