@@ -35,6 +35,15 @@ class CommentController @Inject() (cc: ControllerComponents, db: Db, comments: C
     }
   }
 
-  def mine(page: Option[Int], page_size: Option[Int]): Action[AnyContent] = Action { req => notReady("GET /api/v1/me/comments")(req) }
+  /** `GET /api/v1/me/comments` — the author's own top-level comments. */
+  def mine(page: Option[Int], page_size: Option[Int]): Action[AnyContent] = authed { req =>
+    orFail(Paging.of(page, page_size), req) { p =>
+      Ok(db.readOnly(conn => comments.mine(conn, req.user.id, p)))
+    }
+  }
 
-  def destroy(id: Long): Action[AnyContent] = Action { req => notReady("DELETE /api/v1/me/comments/{id}")(req) }
+  /** `DELETE /api/v1/me/comments/{id}` — comment id and owner are both in the WHERE clause. */
+  def destroy(id: Long): Action[AnyContent] = authed { req =>
+    if db.inTransaction(conn => comments.delete(conn, id, req.user.id)) then NoContent
+    else ApiError.notFound("comment not found", req)
+  }

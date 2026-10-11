@@ -57,3 +57,45 @@ class CommentRepo @Inject() (db: Db):
         Seq(GoodsType, goodsId, userId, userName, content, ApiJson.nowUtc))
       project(db.row(conn, s"SELECT $Columns FROM comment WHERE comment_id = ?", Seq(id)).get)
     }
+
+  /** Goods title for type 0, article title for type 1; empty when the target is gone. */
+  private def targetName(conn: Connection, commentType: Long, idValue: Long): String =
+    if commentType == GoodsType then
+      db.row(conn, "SELECT goods_name AS name FROM goods WHERE goods_id = ?", Seq(idValue))
+        .map(_.str("name")).getOrElse("")
+    else
+      db.row(conn, "SELECT title AS name FROM article WHERE article_id = ?", Seq(idValue))
+        .map(_.str("name")).getOrElse("")
+
+  private def firstReply(conn: Connection, commentId: Long): Option[JsObject] =
+    db.row(conn,
+      s"""SELECT $Columns FROM comment WHERE parent_id = ? AND status = 1
+         |ORDER BY comment_id ASC""".stripMargin, Seq(commentId)).map(project)
+
+  /**
+   * `GET /api/v1/me/comments` (PHP `user.php?act=comment_list`).
+   *
+   * Top-level rows of every comment type, each carrying its target name and the
+   * first published reply, exactly like the legacy account page.
+   */
+  def mine(conn: Connection, userId: Long, page: Paging.Page): JsObject =
+    val where = "user_id = ? AND parent_id = 0"
+    val total = db.count(conn, s"SELECT COUNT(*) FROM comment WHERE $where", Seq(userId))
+    val rows = db.rows(conn,
+      s"""SELECT $Columns FROM comment WHERE $where
+         |ORDER BY comment_id DESC
+         |LIMIT ? OFFSET ?""".stripMargin, Seq(userId, page.pageSize, page.offset))
+    val items = rows.map { row =>
+      project(row) ++ Json.obj(
+        "target_name" -> targetName(conn, row.long("comment_type"), row.long("id_value")),
+        "reply"       -> firstReply(conn, row.long("comment_id")).getOrElse(Json.obj())
+      )
+    }
+    ApiJson.page(page.page, page.pageSize, total, items)
+
+  /**
+   * `DELETE /api/v1/me/comments/{id}` (PHP `user.php?act=del_cmt`) — the comment id
+   * and the bearer user id both have to match, so another author's row is a 404.
+   */
+  def delete(conn: Connection, commentId: Long, userId: Long): Boolean =
+    db.execute(conn, "DELETE FROM comment WHERE comment_id = ? AND user_id = ?", Seq(commentId, userId)) == 1
