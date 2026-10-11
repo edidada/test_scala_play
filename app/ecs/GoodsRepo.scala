@@ -131,6 +131,37 @@ class GoodsRepo @Inject() (db: Db):
       "stock_available"  -> stock
     )
 
+  /**
+   * Payload of `GET /api/v1/goods/{id}/gallery` (PHP `gallery.php?id=`).
+   *
+   * None covers both an unknown or deleted goods and a goods with no uploaded
+   * images, so the client falls back to the detail page either way.
+   */
+  def gallery(conn: Connection, goodsId: Long): Option[JsObject] =
+    db.row(conn,
+      """SELECT goods_id, goods_name, goods_thumb, goods_img, original_img, shop_price
+        |FROM goods WHERE goods_id = ? AND is_delete = 0""".stripMargin, Seq(goodsId))
+      .flatMap { goods =>
+        val images = db.rows(conn,
+          """SELECT img_id, img_url, thumb_url, img_original, img_desc, sort_order
+            |FROM goods_gallery WHERE goods_id = ? ORDER BY img_id""".stripMargin, Seq(goodsId))
+        if images.isEmpty then None
+        else
+          Some(Json.obj(
+            "goods_id"     -> goods.long("goods_id"),
+            "goods_name"   -> goods.str("goods_name"),
+            "price"        -> ApiJson.money(goods.dec("shop_price")),
+            "items"        -> Json.toJson(images.map(r => Json.obj(
+              "img_id"       -> r.long("img_id"),
+              "img_url"      -> r.str("img_url"),
+              "thumb_url"    -> r.str("thumb_url"),
+              "img_original" -> r.str("img_original"),
+              "desc"         -> r.str("img_desc"),
+              "sort_order"   -> r.long("sort_order")
+            )))
+          ))
+      }
+
   /** Existence check for a brand that shoppers may open. */  def brandVisible(conn: Connection, brandId: Long): Boolean =
     db.row(conn, "SELECT brand_id FROM brand WHERE brand_id = ? AND is_show = 1", Seq(brandId)).isDefined
 

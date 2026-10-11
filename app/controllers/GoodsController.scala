@@ -52,7 +52,13 @@ class GoodsController @Inject() (cc: ControllerComponents, db: Db, goodsRepo: Go
     }
   }
 
-  def gallery(id: Long): Action[AnyContent] = Action { req => notReady("GET /api/v1/goods/{id}/gallery")(req) }
+  def gallery(id: Long): Action[AnyContent] = Action { req =>
+    db.readOnly { conn =>
+      goodsRepo.gallery(conn, id) match
+        case Some(payload) => Ok(payload)
+        case None          => ApiError.notFound("goods gallery not found", req)
+    }
+  }
 
   def compare(goods_ids: Option[String]): Action[AnyContent] = Action { req => notReady("GET /api/v1/compare")(req) }
 
