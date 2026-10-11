@@ -76,6 +76,73 @@ class MarketingRepo @Inject() (db: Db):
       "sort_order"   -> r.long("sort_order")
     )))
 
+  /**
+   * `GET /api/v1/packages` (PHP `package.php`): gift packages that are live
+   * right now, each with its lines, the subtotal of current goods prices, the
+   * package price read from `ext_info.package_price` and a never-negative
+   * saving. Only browseable goods appear in a package.
+   */
+  def packages(conn: Connection, page: Paging.Page): JsObject =
+    val now = ApiJson.nowUnix
+    val live = "a.act_type = 4 AND a.is_finished = 0 AND a.start_time <= ? AND a.end_time >= ? AND g.is_on_sale = 1 AND g.is_delete = 0"
+    val total = db.count(conn,
+      s"""SELECT COUNT(*) FROM goods_activity a JOIN goods g ON g.goods_id = a.goods_id WHERE $live""".stripMargin,
+      Seq(now, now))
+    val heads = db.rows(conn,
+      s"""SELECT a.act_id, a.act_name, a.ext_info, a.start_time, a.end_time, g.goods_id AS head_goods_id
+         |FROM goods_activity a JOIN goods g ON g.goods_id = a.goods_id
+         |WHERE $live
+         |ORDER BY a.end_time ASC, a.act_id ASC
+         |LIMIT ? OFFSET ?""".stripMargin, Seq(now, now, page.pageSize, page.offset))
+
+    val ids = heads.map(_.long("act_id"))
+    val lines: Map[Long, List[(JsObject, BigDecimal)]] =
+      if ids.isEmpty then Map.empty
+      else
+        val rows = db.rows(conn,
+          s"""SELECT pg.package_id, pg.goods_id, pg.goods_number, g.goods_name, g.goods_sn, g.shop_price, g.goods_thumb
+             |FROM package_goods pg
+             |JOIN goods g ON g.goods_id = pg.goods_id
+             |WHERE pg.package_id IN (${Sql.marks(ids.size)}) AND g.is_on_sale = 1 AND g.is_delete = 0
+             |ORDER BY pg.package_id, pg.goods_id""".stripMargin, ids)
+        rows.groupBy(_.long("package_id")).map { case (packageId, rs) =>
+          packageId -> rs.map { r =>
+            val quantity = r.long("goods_number")
+            val unit = r.dec("shop_price")
+            val lineTotal = (unit * BigDecimal(quantity)).setScale(2, BigDecimal.RoundingMode.HALF_UP)
+            Json.obj(
+              "goods_id"   -> r.long("goods_id"),
+              "goods_sn"   -> r.str("goods_sn"),
+              "name"       -> r.str("goods_name"),
+              "thumb"      -> r.str("goods_thumb"),
+              "quantity"   -> quantity,
+              "price"      -> ApiJson.money(unit),
+              "line_total" -> ApiJson.money(lineTotal)
+            ) -> lineTotal
+          }
+        }
+
+    val items = heads.map { head =>
+      val packageId = head.long("act_id")
+      val linesOfPackage = lines.getOrElse(packageId, Nil)
+      val subtotal = linesOfPackage.foldLeft(BigDecimal(0))((acc, pair) => acc + pair._2)
+      val packagePrice = (extInfo(head.str("ext_info")) \ "package_price").asOpt[BigDecimal].getOrElse(BigDecimal(0))
+      val saving = (subtotal - packagePrice).max(BigDecimal(0))
+      Json.obj(
+        "id"             -> packageId,
+        "name"           -> head.str("act_name"),
+        "goods_id"       -> head.long("head_goods_id"),
+        "start_time"     -> head.long("start_time"),
+        "end_time"       -> head.long("end_time"),
+        "package_price"  -> ApiJson.money(packagePrice),
+        "subtotal"       -> ApiJson.money(subtotal),
+        "saving"         -> ApiJson.money(saving),
+        "items"          -> Json.toJson(linesOfPackage.map(_._1))
+      )
+    }
+
+    ApiJson.page(page.page, page.pageSize, total, items)
+
   /** `GET /api/v1/promotions/{id}` — one running activity of visible goods. */
   def promotion(conn: Connection, actId: Long): Option[JsObject] =
     val now = ApiJson.nowUnix

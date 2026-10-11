@@ -31,7 +31,7 @@ GET     /cycle-image.xml                            controllers.AdController.cyc
 GET     /api/v1/promotions                          controllers.PromotionController.promotions(page: Option[Int], page_size: Option[Int])
 GET     /api/v1/promotions/:id                      controllers.PromotionController.promotion(id: Long)
 GET     /api/v1/activities                          controllers.PromotionController.activities(page: Option[Int], page_size: Option[Int])
-GET     /api/v1/packages                            controllers.PromotionController.packages
+GET     /api/v1/packages                            controllers.PromotionController.packages(page: Option[Int], page_size: Option[Int])
 GET     /api/v1/topics/:id                          controllers.PromotionController.topic(id: Long)
 GET     /api/v1/votes/current                       controllers.PromotionController.voteCurrent
 POST    /api/v1/votes/:id/responses                 controllers.PromotionController.voteRespond(id: Long)
