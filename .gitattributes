@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.sql text eol=lf
+*.scala text eol=lf
+*.conf text eol=lf
+*.md text eol=lf
+*.xml text eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
