@@ -61,6 +61,15 @@ class CatalogRepo @Inject() (db: Db):
     val params = if key == "is_promote" then Seq(now, now) else Nil
     db.rows(conn, sql, params).map(row => Views.goodsSummary(row, now))
 
+  private val BrandCountSql: String = "SELECT COUNT(*) FROM brand WHERE is_show = 1"
+
+  /** Payload of `GET /api/v1/brands` (PHP `brand.php` index page). */
+  def brands(conn: Connection, page: Paging.Page): JsObject =
+    val total = db.count(conn, BrandCountSql, Nil)
+    val sql = BrandSql + "\nLIMIT ? OFFSET ?"
+    val items = db.rows(conn, sql, Seq(page.pageSize, page.offset)).map(Views.brand)
+    ApiJson.page(page.page, page.pageSize, total, items)
+
   /** Payload of `GET /api/v1/catalog` (PHP `catalog.php`): flat, tree-ready lists. */
   def catalog(conn: Connection): JsObject =
     Json.obj(

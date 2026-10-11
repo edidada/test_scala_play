@@ -11,11 +11,11 @@ import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponent
  * snapshot of the visible catalog (categories, brands), the four legacy goods
  * groups and the newest published articles.
  */
-class HomeController @Inject() (cc: ControllerComponents, db: Db, catalog: CatalogRepo)
+class HomeController @Inject() (cc: ControllerComponents, db: Db, catalogRepo: CatalogRepo)
   extends AbstractController(cc) with ApiSupport:
 
   private val GroupSize = 10
 
   def home: Action[AnyContent] = Action {
-    Ok(db.readOnly(conn => catalog.home(conn, GroupSize)))
+    Ok(db.readOnly(conn => catalogRepo.home(conn, GroupSize)))
   }

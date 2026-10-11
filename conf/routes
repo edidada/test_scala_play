@@ -8,7 +8,7 @@ GET     /healthz                                    controllers.HealthController
 # --- M1: browse the catalog ------------------------------------------------
 GET     /api/v1/home                                controllers.HomeController.home
 GET     /api/v1/catalog                             controllers.CatalogController.catalog
-GET     /api/v1/brands                              controllers.CatalogController.brands
+GET     /api/v1/brands                              controllers.CatalogController.brands(page: Option[Int], page_size: Option[Int])
 GET     /api/v1/brands/:id/goods                    controllers.CatalogController.brandGoods(id: Long, page: Option[Int], page_size: Option[Int], sort: Option[String])
 GET     /api/v1/categories/:id/goods                controllers.CategoryController.goods(id: Long, page: Option[Int], page_size: Option[Int], sort: Option[String])
 GET     /api/v1/goods                               controllers.GoodsController.list(page: Option[Int], page_size: Option[Int], category_id: Option[Int], brand_id: Option[Int], q: Option[String], sort: Option[String])
