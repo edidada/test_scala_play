@@ -31,7 +31,11 @@ class PromotionController @Inject() (cc: ControllerComponents, db: Db, marketing
     }
   }
 
-  def activities: Action[AnyContent] = Action { req => notReady("GET /api/v1/activities")(req) }
+  def activities(page: Option[Int], page_size: Option[Int]): Action[AnyContent] = Action { req =>
+    orFail(Paging.of(page, page_size), req) { p =>
+      Ok(db.readOnly(conn => marketing.activities(conn, p)))
+    }
+  }
 
   def packages: Action[AnyContent] = Action { req => notReady("GET /api/v1/packages")(req) }
 

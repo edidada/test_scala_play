@@ -47,6 +47,35 @@ class MarketingRepo @Inject() (db: Db):
   private val ActivityLive: String =
     "a.is_finished = 0 AND a.start_time <= ? AND a.end_time >= ? AND g.is_on_sale = 1 AND g.is_delete = 0"
 
+  /**
+   * `GET /api/v1/activities` (PHP `activity.php`): the favourable-activity
+   * discount rules, ordered by the shop's own sort order and then by the end of
+   * their window. Money stays a decimal string and `gift` keeps its raw JSON.
+   */
+  def activities(conn: Connection, page: Paging.Page): JsObject =
+    val total = db.count(conn, "SELECT COUNT(*) FROM favourable_activity", Nil)
+    val rows = db.rows(conn,
+      """SELECT act_id, act_name, start_time, end_time, user_rank, act_range, act_range_ext,
+        |  min_amount, max_amount, act_type, act_type_ext, gift, sort_order
+        |FROM favourable_activity
+        |ORDER BY sort_order ASC, end_time ASC, act_id ASC
+        |LIMIT ? OFFSET ?""".stripMargin, Seq(page.pageSize, page.offset))
+    ApiJson.page(page.page, page.pageSize, total, rows.map(r => Json.obj(
+      "id"           -> r.long("act_id"),
+      "name"         -> r.str("act_name"),
+      "start_time"   -> r.long("start_time"),
+      "end_time"     -> r.long("end_time"),
+      "user_rank"    -> r.str("user_rank"),
+      "range"        -> r.long("act_range"),
+      "range_ext"    -> r.str("act_range_ext"),
+      "min_amount"   -> ApiJson.money(r.dec("min_amount")),
+      "max_amount"   -> ApiJson.money(r.dec("max_amount")),
+      "act_type"     -> r.long("act_type"),
+      "act_type_ext" -> ApiJson.money(r.dec("act_type_ext")),
+      "gift"         -> extInfo(r.str("gift")),
+      "sort_order"   -> r.long("sort_order")
+    )))
+
   /** `GET /api/v1/promotions/{id}` — one running activity of visible goods. */
   def promotion(conn: Connection, actId: Long): Option[JsObject] =
     val now = ApiJson.nowUnix
