@@ -311,3 +311,28 @@ curl --noproxy '*' -fsS -X POST "$BASE_URL/api/v1/auth/login" \
 ```
 
 测试结束后删除临时 cookie：`rm -f "$COOKIE_JAR"`。
+
+---
+
+## 实测补记（Scala Play 实现完成后追加，原文不作改动）
+
+- **端口**：`conf/application.conf` 里 `play.server.http.port = 9000`，因此 `sbt "run 9000"` 之后
+  `BASE_URL` 应取 `http://127.0.0.1:9000`（正文示例的 8080 需要显式 `export BASE_URL=...`）。
+- **outbox 表名**：以 `conf/sql/sqlite_boot.sql` 为准，表名是 `email_outbox`，不是 `ecs_email_outbox`。
+  取一次性 token 的命令：
+
+  ```bash
+  sqlite3 data/ecshop.sqlite3 \
+    "SELECT json_extract(payload,'\$.token') FROM email_outbox
+     WHERE template_name='verify_email' ORDER BY message_id DESC LIMIT 1"
+  ```
+
+- **可直接执行的购物车验收**：`bash scripts/curl_cart_example.sh` 已落地。它默认打
+  `http://127.0.0.1:9000`，用时间戳新建一次性账号，不打印 access token，且明确断言旧版本
+  PATCH 返回 409；不依赖 `jq`（用 Python 读 JSON），退出码 0 表示全部通过。
+- **状态码实测口径**（与正文示例一致，补充确认）：注册重复用户名/邮箱为 400；
+  邮件确认、密码重置确认、newsletter 确认、logout、`PATCH /me/password` 为 204；
+  `GET /api/v1/goods/13`（已下架）为 200，仅 compare/gallery/exchange/activities 对下架商品返回 404。
+- **自动化测试**：`sbt -batch test` 跑两个 suite —— `ecs.ContractSpec`（不碰数据库的契约单元测试）
+  与 `routes.ApiFlowSpec`（临时 SQLite 全链路：注册 → 购物车 → 地址 → 报价 → 下单 → 幂等重放 →
+  网关回调 → 确认收货）。CI 见 `.github/workflows/ci.yml`，矩阵为 ubuntu/windows/macos × JDK 17/21。
